@@ -1,0 +1,12 @@
+[project]
+name = "discord-guessr"
+version = "0.1.0"
+description = "A Discord bot game where players guess which channel a message came from"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "discord.py>=2.3.0",
+    "aiosqlite>=0.19.0",
+    "python-dotenv>=1.0.0",
+]

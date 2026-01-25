@@ -40,19 +40,18 @@ A Discord bot game where players are shown a random "interesting" message (with 
 git clone <repo-url>
 cd discord-geoguessr
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Install uv (if not already installed)
+# See https://docs.astral.sh/uv/getting-started/installation/
 
 # Install dependencies
-pip install -r requirements.txt
+uv sync
 
 # Configure environment
 cp .env.example .env
 # Edit .env and add your DISCORD_TOKEN
 
 # Run the bot
-python -m bot.main
+uv run python -m bot.main
 ```
 
 ## Commands

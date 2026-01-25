@@ -175,9 +175,11 @@ class GameService:
 
         # Update player scores
         for guess in guesses:
+            channel_correct = guess.channel_correct or False
+            time_score = guess.time_score or 0
             author_correct = guess.author_correct or False
-            total_score = calculate_total_score(guess.channel_correct, guess.time_score, author_correct)
-            is_perfect = is_perfect_guess(guess.channel_correct, guess.time_score, author_correct)
+            total_score = calculate_total_score(channel_correct, time_score, author_correct)
+            is_perfect = is_perfect_guess(channel_correct, time_score, author_correct)
 
             await self.db.update_player_score(
                 guild_id=str(guild.id),
@@ -207,7 +209,7 @@ class GameService:
         player: discord.Member,
         guessed_channel: discord.TextChannel,
         guessed_time: str,
-        guessed_author: discord.Member = None,
+        guessed_author: discord.Member | None = None,
     ) -> tuple[bool, str]:
         """Submit a guess for the active round.
 

@@ -30,6 +30,7 @@ class Database:
 
     async def _run_migrations(self) -> None:
         """Run all SQL migration files."""
+        assert self._connection is not None
         # Create migrations tracking table
         await self._connection.execute("""
             CREATE TABLE IF NOT EXISTS _migrations (
@@ -56,19 +57,22 @@ class Database:
 
     async def execute(self, query: str, params: tuple = ()) -> aiosqlite.Cursor:
         """Execute a query and return the cursor."""
+        assert self._connection is not None
         cursor = await self._connection.execute(query, params)
         await self._connection.commit()
         return cursor
 
     async def fetch_one(self, query: str, params: tuple = ()) -> aiosqlite.Row | None:
         """Fetch a single row."""
+        assert self._connection is not None
         cursor = await self._connection.execute(query, params)
         return await cursor.fetchone()
 
     async def fetch_all(self, query: str, params: tuple = ()) -> list[aiosqlite.Row]:
         """Fetch all rows."""
+        assert self._connection is not None
         cursor = await self._connection.execute(query, params)
-        return await cursor.fetchall()
+        return list(await cursor.fetchall())
 
     async def fetch_value(self, query: str, params: tuple = ()) -> Any | None:
         """Fetch a single value from the first column of the first row."""
@@ -102,7 +106,7 @@ class Database:
                 target_author_id,
             ),
         )
-        return cursor.lastrowid
+        return cursor.lastrowid or 0
 
     async def get_active_round(self, guild_id: str, game_channel_id: str) -> GameRound | None:
         """Get the active round for a channel."""

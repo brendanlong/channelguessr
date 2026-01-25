@@ -2,12 +2,16 @@
 
 import contextlib
 import logging
+from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
 
 from utils.formatting import format_leaderboard, format_player_stats
+
+if TYPE_CHECKING:
+    from bot.main import ChannelguessrBot
 
 logger = logging.getLogger(__name__)
 
@@ -56,18 +60,25 @@ class ClearDataConfirmView(ui.View):
 class GameCommands(commands.Cog):
     """Cog containing all game commands."""
 
-    def __init__(self, bot: commands.Bot):
+    bot: "ChannelguessrBot"
+
+    def __init__(self, bot: "ChannelguessrBot"):
         self.bot = bot
 
     @app_commands.command(name="start", description="Start a new Channelguessr round")
     async def start(self, interaction: discord.Interaction):
         """Start a new game round."""
-        logger.info(f"Start command invoked by {interaction.user} in #{interaction.channel.name}")
+        channel_name = getattr(interaction.channel, "name", "DM")
+        logger.info(f"Start command invoked by {interaction.user} in #{channel_name}")
         await interaction.response.defer()
+
+        if not interaction.guild or not self.bot.game_service:
+            await interaction.followup.send("This command only works in servers.", ephemeral=True)
+            return
 
         success, message = await self.bot.game_service.start_round(
             guild=interaction.guild,
-            channel=interaction.channel,
+            channel=interaction.channel,  # type: ignore[arg-type]
         )
 
         if not success:
@@ -87,17 +98,21 @@ class GameCommands(commands.Cog):
         interaction: discord.Interaction,
         channel: discord.TextChannel,
         time: str,
-        author: discord.Member = None,
+        author: discord.Member | None = None,
     ):
         """Submit a guess for the current round."""
         author_info = f", author=@{author.name}" if author else ""
         logger.info(f"Guess command invoked by {interaction.user}: channel=#{channel.name}, time='{time}'{author_info}")
         await interaction.response.defer(ephemeral=True)
 
+        if not interaction.guild or not self.bot.game_service:
+            await interaction.followup.send("This command only works in servers.", ephemeral=True)
+            return
+
         success, message = await self.bot.game_service.submit_guess(
             guild=interaction.guild,
-            channel=interaction.channel,
-            player=interaction.user,
+            channel=interaction.channel,  # type: ignore[arg-type]
+            player=interaction.user,  # type: ignore[arg-type]
             guessed_channel=channel,
             guessed_time=time,
             guessed_author=author,
@@ -109,12 +124,17 @@ class GameCommands(commands.Cog):
     @app_commands.checks.has_permissions(manage_messages=True)
     async def skip(self, interaction: discord.Interaction):
         """Skip the current round."""
-        logger.info(f"Skip command invoked by {interaction.user} in #{interaction.channel.name}")
+        channel_name = getattr(interaction.channel, "name", "DM")
+        logger.info(f"Skip command invoked by {interaction.user} in #{channel_name}")
         await interaction.response.defer()
+
+        if not interaction.guild or not self.bot.game_service:
+            await interaction.followup.send("This command only works in servers.", ephemeral=True)
+            return
 
         success, message = await self.bot.game_service.skip_round(
             guild=interaction.guild,
-            channel=interaction.channel,
+            channel=interaction.channel,  # type: ignore[arg-type]
         )
 
         await interaction.followup.send(message)
@@ -136,6 +156,10 @@ class GameCommands(commands.Cog):
         """Show the server leaderboard."""
         await interaction.response.defer(ephemeral=True)
 
+        if not interaction.guild or not self.bot.db:
+            await interaction.followup.send("This command only works in servers.", ephemeral=True)
+            return
+
         players = await self.bot.db.get_leaderboard(str(interaction.guild.id))
 
         message = format_leaderboard(
@@ -151,10 +175,14 @@ class GameCommands(commands.Cog):
     async def stats(
         self,
         interaction: discord.Interaction,
-        user: discord.Member = None,
+        user: discord.Member | None = None,
     ):
         """Show player stats."""
         await interaction.response.defer(ephemeral=True)
+
+        if not interaction.guild or not self.bot.db:
+            await interaction.followup.send("This command only works in servers.", ephemeral=True)
+            return
 
         target_user = user or interaction.user
         guild_id = str(interaction.guild.id)
@@ -223,6 +251,6 @@ A game where you guess which channel a message came from, when it was posted, an
                 await interaction.edit_original_response(content="Data deletion timed out.", view=None)
 
 
-async def setup(bot: commands.Bot):
+async def setup(bot: "ChannelguessrBot"):
     """Load the cog."""
     await bot.add_cog(GameCommands(bot))

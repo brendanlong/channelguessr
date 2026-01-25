@@ -38,8 +38,8 @@ class ChannelguessrBot(commands.Bot):
             help_command=None,
         )
 
-        self.db: Database = None
-        self.game_service: GameService = None
+        self.db: Database | None = None
+        self.game_service: GameService | None = None
 
     async def setup_hook(self):
         """Called when the bot is starting up."""
@@ -70,7 +70,8 @@ class ChannelguessrBot(commands.Bot):
 
     async def on_ready(self):
         """Called when the bot is fully ready."""
-        logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
+        if self.user:
+            logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info(f"Connected to {len(self.guilds)} guild(s)")
 
         # Clean up data for guilds the bot is no longer in

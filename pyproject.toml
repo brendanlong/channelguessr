@@ -46,7 +46,3 @@ ignore = ["E501"]
 [tool.pyright]
 pythonVersion = "3.10"
 typeCheckingMode = "basic"
-reportOptionalMemberAccess = false
-reportAttributeAccessIssue = false
-reportArgumentType = false
-reportReturnType = false

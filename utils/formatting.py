@@ -197,26 +197,28 @@ def _build_game_message(
 
 
 def format_round_results(
-    target_channel: discord.TextChannel,
+    target_channel: discord.abc.GuildChannel | None,
     target_timestamp_ms: int,
     target_message_id: str,
-    target_author_id: str,
+    target_author_id: str | None,
     guesses: list[Guess],
     guild: discord.Guild,
 ) -> str:
     """Format the results of a completed round."""
     from utils.snowflake import format_timestamp
 
-    message_link = f"https://discord.com/channels/{guild.id}/{target_channel.id}/{target_message_id}"
+    channel_id = target_channel.id if target_channel else 0
+    message_link = f"https://discord.com/channels/{guild.id}/{channel_id}/{target_message_id}"
 
     # Look up author to display name without pinging
-    author_member = guild.get_member(int(target_author_id))
+    author_member = guild.get_member(int(target_author_id)) if target_author_id else None
     author_display = f"`@{author_member.display_name}`" if author_member else "`@unknown`"
 
+    channel_mention = target_channel.mention if target_channel else "#unknown"
     lines = [
         "# Round Complete!",
         "",
-        f"📍 **Channel:** {target_channel.mention}",
+        f"📍 **Channel:** {channel_mention}",
         f"**Posted:** {format_timestamp(target_timestamp_ms, 'f')} ({format_timestamp(target_timestamp_ms, 'R')})",
         f"**Author:** {author_display}",
         f"**Message:** [Jump to message]({message_link})",

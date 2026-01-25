@@ -37,6 +37,10 @@ We do not:
 
 Data is stored in a SQLite database hosted on [Fly.io](https://fly.io) infrastructure in the United States.
 
+## Logging
+
+Usernames, Discord IDs, and other information may appear in application logs for debugging purposes. We attempt to keep message content out of logs, but cannot guarantee this. Logs follow Fly.io's default retention policy (7 days at time of writing), but we make no guarantees about log retention periods.
+
 ## Data Retention
 
 Game data is retained while the bot is in your server.

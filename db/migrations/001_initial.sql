@@ -1,23 +1,3 @@
--- Pool of interesting messages eligible for the game
-CREATE TABLE IF NOT EXISTS interesting_messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    message_id TEXT UNIQUE NOT NULL,      -- Discord snowflake
-    channel_id TEXT NOT NULL,
-    guild_id TEXT NOT NULL,
-    author_id TEXT NOT NULL,
-    content TEXT NOT NULL,
-    timestamp_ms INTEGER NOT NULL,        -- Unix ms, derived from snowflake
-    interest_score INTEGER DEFAULT 0,     -- Why it's interesting (bitmask)
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_interesting_guild_channel
-    ON interesting_messages(guild_id, channel_id);
-CREATE INDEX IF NOT EXISTS idx_interesting_timestamp
-    ON interesting_messages(timestamp_ms);
-CREATE INDEX IF NOT EXISTS idx_interesting_guild
-    ON interesting_messages(guild_id);
-
 -- Active game rounds
 CREATE TABLE IF NOT EXISTS game_rounds (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,3 +42,6 @@ CREATE TABLE IF NOT EXISTS player_scores (
 
 CREATE INDEX IF NOT EXISTS idx_scores_guild_total
     ON player_scores(guild_id, total_score DESC);
+
+-- Drop the interesting_messages table if it exists (no longer used)
+DROP TABLE IF EXISTS interesting_messages;

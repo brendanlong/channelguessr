@@ -18,6 +18,7 @@ from bot.services.scoring_service import (
     calculate_total_score,
     is_perfect_guess,
 )
+from bot.services.message_selector import MessageSelector
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class GameService:
     def __init__(self, bot: commands.Bot, db: Database):
         self.bot = bot
         self.db = db
+        self.message_selector = MessageSelector()
         self._active_timers: dict[str, asyncio.Task] = {}
 
     async def start_round(
@@ -45,40 +47,16 @@ class GameService:
         if active_round:
             return (False, "A round is already active! Wait for it to finish.")
 
-        # Check message pool size
-        min_age_ms = Config.MIN_MESSAGE_AGE_HOURS * 60 * 60 * 1000
-        message_count = await self.db.count_interesting_messages(guild_id, min_age_ms)
-
-        if message_count < Config.MIN_INTERESTING_MESSAGES:
+        # Select random message from guild history
+        result = await self.message_selector.select_random_message(guild)
+        if not result:
             return (
                 False,
-                f"Not enough messages indexed yet! Need {Config.MIN_INTERESTING_MESSAGES}, "
-                f"have {message_count}. Keep chatting and try again later.",
+                "Couldn't find a suitable message. The server might be too new "
+                "or channels may not have enough history. Try again later!",
             )
 
-        # Select random message
-        message_row = await self.db.get_random_message(guild_id, min_age_ms)
-        if not message_row:
-            return (False, "Couldn't find a message to use. Try again!")
-
-        # Fetch the actual message and context
-        target_channel = guild.get_channel(int(message_row["channel_id"]))
-        if not target_channel:
-            return (False, "The channel for the selected message no longer exists.")
-
-        try:
-            target_message = await target_channel.fetch_message(
-                int(message_row["message_id"])
-            )
-        except discord.NotFound:
-            # Message was deleted - remove from pool and try again
-            await self.db.execute(
-                "DELETE FROM interesting_messages WHERE message_id = ?",
-                (message_row["message_id"],),
-            )
-            return (False, "Selected message was deleted. Try again!")
-        except discord.Forbidden:
-            return (False, "I don't have permission to read that channel anymore.")
+        target_message, target_channel = result
 
         # Fetch context messages
         before_messages, after_messages = await self._fetch_context(
@@ -87,12 +65,13 @@ class GameService:
 
         # Create round in database
         round_number = await self.db.get_round_number(guild_id) + 1
+        target_timestamp_ms = snowflake_to_timestamp_ms(target_message.id)
         round_id = await self.db.create_round(
             guild_id=guild_id,
             game_channel_id=channel_id,
             target_message_id=str(target_message.id),
             target_channel_id=str(target_channel.id),
-            target_timestamp_ms=message_row["timestamp_ms"],
+            target_timestamp_ms=target_timestamp_ms,
         )
 
         # Format and send game message

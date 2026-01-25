@@ -14,10 +14,12 @@ class Config:
     # Game settings
     ROUND_TIMEOUT_SECONDS = 60
     CONTEXT_MESSAGES = 5
-    MIN_INTERESTING_MESSAGES = 10  # Minimum pool before game can start
     MIN_MESSAGE_AGE_HOURS = 24  # Exclude messages newer than this
 
+    # Message search settings
+    MESSAGE_SEARCH_LIMIT = 100  # Messages to fetch per API call
+    MAX_SEARCH_RETRIES = 5  # How many channel/time combos to try
+    LOOKBACK_DAYS = 365  # How far back to look for messages
+
     # Interest thresholds
-    MIN_REACTIONS = 3
     MIN_MESSAGE_LENGTH = 200
-    MIN_REPLIES = 2

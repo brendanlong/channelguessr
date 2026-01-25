@@ -30,7 +30,6 @@ class GeoguessrBot(commands.Bot):
         intents.message_content = True
         intents.guilds = True
         intents.guild_messages = True
-        intents.guild_reactions = True
 
         super().__init__(
             command_prefix="!",  # Fallback prefix, using slash commands primarily
@@ -54,8 +53,6 @@ class GeoguessrBot(commands.Bot):
         # Load cogs
         cogs = [
             "bot.commands.game",
-            "bot.events.message",
-            "bot.events.reaction",
         ]
 
         for cog in cogs:

@@ -16,12 +16,7 @@ class GameCommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    channelguessr_group = app_commands.Group(
-        name="channelguessr",
-        description="Channelguessr game commands",
-    )
-
-    @channelguessr_group.command(name="start", description="Start a new guessing round")
+    @app_commands.command(name="start", description="Start a new Channelguessr round")
     async def start(self, interaction: discord.Interaction):
         """Start a new game round."""
         logger.info(f"Start command invoked by {interaction.user} in #{interaction.channel.name}")
@@ -38,9 +33,7 @@ class GameCommands(commands.Cog):
             # Game message is sent by the service
             await interaction.followup.send("Round started!", ephemeral=True)
 
-    @channelguessr_group.command(
-        name="guess", description="Submit your guess for the current round"
-    )
+    @app_commands.command(name="guess", description="Submit your guess for the current round")
     @app_commands.describe(
         channel="The channel you think the message is from",
         time="When you think the message was posted (e.g., 'March 2024', 'Jan 15 2023')",
@@ -69,9 +62,7 @@ class GameCommands(commands.Cog):
 
         await interaction.followup.send(message, ephemeral=True)
 
-    @channelguessr_group.command(
-        name="skip", description="Skip the current round (moderators only)"
-    )
+    @app_commands.command(name="skip", description="Skip the current round (moderators only)")
     @app_commands.checks.has_permissions(manage_messages=True)
     async def skip(self, interaction: discord.Interaction):
         """Skip the current round."""
@@ -101,9 +92,7 @@ class GameCommands(commands.Cog):
                 "An error occurred while skipping the round.", ephemeral=True
             )
 
-    @channelguessr_group.command(
-        name="leaderboard", description="Show the server leaderboard"
-    )
+    @app_commands.command(name="leaderboard", description="Show the server leaderboard")
     async def leaderboard(self, interaction: discord.Interaction):
         """Show the server leaderboard."""
         await interaction.response.defer(ephemeral=True)
@@ -119,7 +108,7 @@ class GameCommands(commands.Cog):
 
         await interaction.followup.send(message, ephemeral=True)
 
-    @channelguessr_group.command(name="stats", description="Show player stats")
+    @app_commands.command(name="stats", description="Show your Channelguessr stats")
     @app_commands.describe(user="The user to show stats for (defaults to yourself)")
     async def stats(
         self,
@@ -141,7 +130,7 @@ class GameCommands(commands.Cog):
 
         await interaction.followup.send(message, ephemeral=True)
 
-    @channelguessr_group.command(name="help", description="Show help for the game")
+    @app_commands.command(name="channelguessr", description="Show help for Channelguessr")
     async def help(self, interaction: discord.Interaction):
         """Show help information."""
         help_text = """
@@ -150,9 +139,9 @@ class GameCommands(commands.Cog):
 A game where you guess which channel a message came from, when it was posted, and who sent it!
 
 **How to Play:**
-1. Use `/channelguessr start` to begin a round
+1. Use `/start` to begin a round
 2. You'll see a mystery message with some context
-3. Use `/channelguessr guess` to submit your guess
+3. Use `/guess` to submit your guess
 4. After 60 seconds, the round ends and scores are revealed
 
 **Scoring:**
@@ -161,11 +150,11 @@ A game where you guess which channel a message came from, when it was posted, an
 - **Author:** 500 points if correct (optional)
 
 **Commands:**
-- `/channelguessr start` - Start a new round
-- `/channelguessr guess <channel> <time> [author]` - Submit your guess
-- `/channelguessr skip` - Skip the current round (mods only)
-- `/channelguessr leaderboard` - View the leaderboard
-- `/channelguessr stats [user]` - View player stats
+- `/start` - Start a new round
+- `/guess <channel> <time> [author]` - Submit your guess
+- `/skip` - Skip the current round (mods only)
+- `/leaderboard` - View the leaderboard
+- `/stats [user]` - View player stats
 """
         await interaction.response.send_message(help_text, ephemeral=True)
 

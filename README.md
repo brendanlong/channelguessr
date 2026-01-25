@@ -1,5 +1,7 @@
 # Channelguessr
 
+[![Add to Discord](https://img.shields.io/badge/Add%20to%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=1464797297706795193)
+
 A Discord bot game where players are shown a random "interesting" message (with surrounding context) and must guess which channel it came from and approximately when it was posted.
 
 ## Features

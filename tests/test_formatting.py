@@ -1,6 +1,6 @@
 """Tests for message formatting utilities."""
 
-from utils.formatting import DISCORD_MAX_LENGTH, format_game_message
+from utils.formatting import DISCORD_MAX_LENGTH, escape_mentions, format_game_message
 
 
 class TestFormatGameMessage:
@@ -75,3 +75,81 @@ class TestFormatGameMessage:
 
         # Target should always be present
         assert unique_target in result
+
+
+class TestEscapeMentions:
+    """Tests for the escape_mentions function."""
+
+    def test_no_mentions_unchanged(self):
+        """Text without mentions should be unchanged."""
+        text = "Hello, this is a normal message!"
+        result = escape_mentions(text, None)
+        assert result == text
+
+    def test_user_mention_without_guild(self):
+        """User mentions without guild should become `@user`."""
+        text = "Hello <@123456789>!"
+        result = escape_mentions(text, None)
+        assert result == "Hello `@user`!"
+
+    def test_user_mention_with_nickname_syntax_without_guild(self):
+        """User mentions with ! (nickname) should also be escaped."""
+        text = "Hello <@!123456789>!"
+        result = escape_mentions(text, None)
+        assert result == "Hello `@user`!"
+
+    def test_role_mention_without_guild(self):
+        """Role mentions without guild should become `@role`."""
+        text = "Attention <@&987654321>!"
+        result = escape_mentions(text, None)
+        assert result == "Attention `@role`!"
+
+    def test_multiple_mentions_without_guild(self):
+        """Multiple mentions should all be escaped."""
+        text = "Hey <@111> and <@222>, also <@&333>!"
+        result = escape_mentions(text, None)
+        assert result == "Hey `@user` and `@user`, also `@role`!"
+
+    def test_user_mention_with_guild_member_found(self, mock_guild):
+        """User mentions should resolve to member display names when found."""
+        guild = mock_guild(members={123456789: "TestUser"})
+        text = "Hello <@123456789>!"
+        result = escape_mentions(text, guild)
+        assert result == "Hello `@TestUser`!"
+
+    def test_user_mention_with_guild_member_not_found(self, mock_guild):
+        """User mentions should fall back to `@user` when member not found."""
+        guild = mock_guild(members={})
+        text = "Hello <@123456789>!"
+        result = escape_mentions(text, guild)
+        assert result == "Hello `@user`!"
+
+    def test_role_mention_with_guild_role_found(self, mock_guild):
+        """Role mentions should resolve to role names when found."""
+        guild = mock_guild(roles={987654321: "Moderators"})
+        text = "Attention <@&987654321>!"
+        result = escape_mentions(text, guild)
+        assert result == "Attention `@Moderators`!"
+
+    def test_role_mention_with_guild_role_not_found(self, mock_guild):
+        """Role mentions should fall back to `@role` when role not found."""
+        guild = mock_guild(roles={})
+        text = "Attention <@&987654321>!"
+        result = escape_mentions(text, guild)
+        assert result == "Attention `@role`!"
+
+    def test_mixed_mentions_with_guild(self, mock_guild):
+        """Mix of found and not-found mentions should be handled correctly."""
+        guild = mock_guild(
+            members={111: "Alice", 222: "Bob"},
+            roles={333: "Admins"},
+        )
+        text = "Hey <@111>, <@222>, <@999>, and <@&333>!"
+        result = escape_mentions(text, guild)
+        assert result == "Hey `@Alice`, `@Bob`, `@user`, and `@Admins`!"
+
+    def test_channel_mentions_not_escaped(self):
+        """Channel mentions (<#id>) should not be modified."""
+        text = "Check out <#123456789>!"
+        result = escape_mentions(text, None)
+        assert result == "Check out <#123456789>!"

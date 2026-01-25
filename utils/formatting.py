@@ -10,6 +10,10 @@ from models import Guess, PlayerScore
 # URL pattern for detecting links
 URL_PATTERN = re.compile(r"https?://\S+")
 
+# Discord mention patterns (user and role mentions)
+USER_MENTION_PATTERN = re.compile(r"<@!?(\d+)>")
+ROLE_MENTION_PATTERN = re.compile(r"<@&(\d+)>")
+
 # Discord message limit
 DISCORD_MAX_LENGTH = 2000
 
@@ -17,6 +21,34 @@ DISCORD_MAX_LENGTH = 2000
 def suppress_url_embeds(text: str) -> str:
     """Wrap URLs in angle brackets to suppress Discord embeds."""
     return URL_PATTERN.sub(r"<\g<0>>", text)
+
+
+def escape_mentions(text: str, guild: discord.Guild | None) -> str:
+    """Escape Discord mentions to prevent notifications.
+
+    Resolves user mentions to `@username` format and role mentions to
+    `@rolename` format, wrapped in backticks to prevent pinging.
+    """
+
+    def replace_user_mention(match: re.Match[str]) -> str:
+        user_id = int(match.group(1))
+        if guild:
+            member = guild.get_member(user_id)
+            if member:
+                return f"`@{member.display_name}`"
+        return "`@user`"
+
+    def replace_role_mention(match: re.Match[str]) -> str:
+        role_id = int(match.group(1))
+        if guild:
+            role = guild.get_role(role_id)
+            if role:
+                return f"`@{role.name}`"
+        return "`@role`"
+
+    text = USER_MENTION_PATTERN.sub(replace_user_mention, text)
+    text = ROLE_MENTION_PATTERN.sub(replace_role_mention, text)
+    return text
 
 
 def anonymize_usernames(
@@ -41,6 +73,9 @@ def format_message_content(
 ) -> str:
     """Format a single message for display."""
     content = message.content or ""
+
+    # Escape mentions to prevent notifications
+    content = escape_mentions(content, message.guild)
 
     # Suppress URL embeds by wrapping in angle brackets
     content = suppress_url_embeds(content)
@@ -174,12 +209,16 @@ def format_round_results(
 
     message_link = f"https://discord.com/channels/{guild.id}/{target_channel.id}/{target_message_id}"
 
+    # Look up author to display name without pinging
+    author_member = guild.get_member(int(target_author_id))
+    author_display = f"`@{author_member.display_name}`" if author_member else "`@unknown`"
+
     lines = [
         "# Round Complete!",
         "",
         f"📍 **Channel:** {target_channel.mention}",
         f"**Posted:** {format_timestamp(target_timestamp_ms, 'f')} ({format_timestamp(target_timestamp_ms, 'R')})",
-        f"**Author:** <@{target_author_id}>",
+        f"**Author:** {author_display}",
         f"**Message:** [Jump to message]({message_link})",
         "",
     ]

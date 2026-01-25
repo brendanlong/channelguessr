@@ -24,6 +24,7 @@ class GameCommands(commands.Cog):
     @channelguessr_group.command(name="start", description="Start a new guessing round")
     async def start(self, interaction: discord.Interaction):
         """Start a new game round."""
+        logger.info(f"Start command invoked by {interaction.user} in #{interaction.channel.name}")
         await interaction.response.defer()
 
         success, message = await self.bot.game_service.start_round(
@@ -51,6 +52,7 @@ class GameCommands(commands.Cog):
         time: str,
     ):
         """Submit a guess for the current round."""
+        logger.info(f"Guess command invoked by {interaction.user}: channel=#{channel.name}, time='{time}'")
         await interaction.response.defer(ephemeral=True)
 
         success, message = await self.bot.game_service.submit_guess(
@@ -69,6 +71,7 @@ class GameCommands(commands.Cog):
     @app_commands.checks.has_permissions(manage_messages=True)
     async def skip(self, interaction: discord.Interaction):
         """Skip the current round."""
+        logger.info(f"Skip command invoked by {interaction.user} in #{interaction.channel.name}")
         await interaction.response.defer()
 
         success, message = await self.bot.game_service.skip_round(

@@ -80,9 +80,9 @@ class MessageSelector:
             random_timestamp_ms = random.randint(min_timestamp_ms, max_timestamp_ms)
             after_snowflake = timestamp_ms_to_snowflake(random_timestamp_ms)
 
-            logger.debug(
-                f"Attempt {attempt + 1}/{Config.MAX_SEARCH_RETRIES}: "
-                f"Searching #{channel.name} from timestamp {random_timestamp_ms}"
+            logger.info(
+                f"Message search attempt {attempt + 1}/{Config.MAX_SEARCH_RETRIES}: "
+                f"checking #{channel.name}..."
             )
 
             try:
@@ -97,9 +97,9 @@ class MessageSelector:
 
                 # If we got very few messages, this channel/time is too sparse
                 if len(messages) < 5:
-                    logger.debug(
+                    logger.info(
                         f"Channel #{channel.name} too sparse at this time "
-                        f"({len(messages)} messages), trying again"
+                        f"({len(messages)} messages found), retrying..."
                     )
                     continue
 
@@ -112,9 +112,8 @@ class MessageSelector:
                         )
                         return (msg, channel)
 
-                logger.debug(
-                    f"No interesting messages found in batch of {len(messages)}, "
-                    "trying again"
+                logger.info(
+                    f"No interesting messages in batch of {len(messages)} from #{channel.name}, retrying..."
                 )
 
             except discord.Forbidden:

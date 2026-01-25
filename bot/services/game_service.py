@@ -42,12 +42,16 @@ class GameService:
         guild_id = str(guild.id)
         channel_id = str(channel.id)
 
+        logger.info(f"Starting new round in guild {guild.name} ({guild_id}), channel #{channel.name}")
+
         # Check for active round
         active_round = await self.db.get_active_round(guild_id, channel_id)
         if active_round:
+            logger.info(f"Round already active in channel #{channel.name}")
             return (False, "A round is already active! Wait for it to finish.")
 
         # Select random message from guild history
+        logger.info("Searching for a random message from guild history...")
         result = await self.message_selector.select_random_message(guild)
         if not result:
             return (
@@ -57,11 +61,14 @@ class GameService:
             )
 
         target_message, target_channel = result
+        logger.info(f"Found message {target_message.id} in #{target_channel.name}")
 
         # Fetch context messages
+        logger.info("Fetching context messages around target...")
         before_messages, after_messages = await self._fetch_context(
             target_channel, target_message
         )
+        logger.info(f"Fetched {len(before_messages)} before and {len(after_messages)} after context messages")
 
         # Create round in database
         round_number = await self.db.get_round_number(guild_id) + 1
@@ -73,6 +80,7 @@ class GameService:
             target_channel_id=str(target_channel.id),
             target_timestamp_ms=target_timestamp_ms,
         )
+        logger.info(f"Created round {round_id} (round #{round_number})")
 
         # Format and send game message
         game_text = format_game_message(
@@ -84,6 +92,7 @@ class GameService:
         )
 
         await channel.send(game_text)
+        logger.info(f"Round {round_id} started successfully")
 
         # Start timeout timer
         timer_key = f"{guild_id}:{channel_id}"
@@ -106,6 +115,7 @@ class GameService:
 
         try:
             # Fetch messages before
+            logger.debug(f"Fetching {context_size} messages before target in #{channel.name}")
             async for msg in channel.history(
                 limit=context_size, before=target_message, oldest_first=False
             ):
@@ -115,13 +125,14 @@ class GameService:
             before_messages.reverse()
 
             # Fetch messages after
+            logger.debug(f"Fetching {context_size} messages after target in #{channel.name}")
             async for msg in channel.history(
                 limit=context_size, after=target_message, oldest_first=True
             ):
                 after_messages.append(msg)
 
         except discord.Forbidden:
-            logger.warning(f"Can't read history in channel {channel.id}")
+            logger.warning(f"Can't read history in channel #{channel.name} ({channel.id})")
 
         return (before_messages, after_messages)
 
@@ -142,12 +153,15 @@ class GameService:
         status: str = "completed",
     ):
         """End a round and show results."""
+        logger.info(f"Ending round {round_id} with status '{status}'")
+
         # Get round info
         round_info = await self.db.fetch_one(
             "SELECT * FROM game_rounds WHERE id = ?", (round_id,)
         )
 
         if not round_info or round_info["status"] != "active":
+            logger.debug(f"Round {round_id} not active or not found, skipping end_round")
             return
 
         # Mark round as ended
@@ -162,6 +176,7 @@ class GameService:
         # Get guesses
         guess_rows = await self.db.get_guesses_for_round(round_id)
         guesses = [dict(row) for row in guess_rows]
+        logger.info(f"Round {round_id} received {len(guesses)} guesses")
 
         # Update player scores
         for guess in guesses:
@@ -187,6 +202,7 @@ class GameService:
         )
 
         await channel.send(results_text)
+        logger.info(f"Round {round_id} ended, results posted")
 
     async def submit_guess(
         self,

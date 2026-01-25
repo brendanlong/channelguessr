@@ -1,4 +1,4 @@
-"""Game commands for Discord Geoguessr."""
+"""Game commands for Channelguessr."""
 
 import discord
 from discord import app_commands
@@ -16,12 +16,12 @@ class GameCommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    geoguessr_group = app_commands.Group(
-        name="geoguessr",
-        description="Discord Message Geoguessr game commands",
+    channelguessr_group = app_commands.Group(
+        name="channelguessr",
+        description="Channelguessr game commands",
     )
 
-    @geoguessr_group.command(name="start", description="Start a new guessing round")
+    @channelguessr_group.command(name="start", description="Start a new guessing round")
     async def start(self, interaction: discord.Interaction):
         """Start a new game round."""
         await interaction.response.defer()
@@ -37,7 +37,7 @@ class GameCommands(commands.Cog):
             # Game message is sent by the service
             await interaction.followup.send("Round started!", ephemeral=True)
 
-    @geoguessr_group.command(
+    @channelguessr_group.command(
         name="guess", description="Submit your guess for the current round"
     )
     @app_commands.describe(
@@ -63,7 +63,7 @@ class GameCommands(commands.Cog):
 
         await interaction.followup.send(message, ephemeral=True)
 
-    @geoguessr_group.command(
+    @channelguessr_group.command(
         name="skip", description="Skip the current round (moderators only)"
     )
     @app_commands.checks.has_permissions(manage_messages=True)
@@ -94,7 +94,7 @@ class GameCommands(commands.Cog):
                 "An error occurred while skipping the round.", ephemeral=True
             )
 
-    @geoguessr_group.command(
+    @channelguessr_group.command(
         name="leaderboard", description="Show the server leaderboard"
     )
     async def leaderboard(self, interaction: discord.Interaction):
@@ -112,7 +112,7 @@ class GameCommands(commands.Cog):
 
         await interaction.followup.send(message)
 
-    @geoguessr_group.command(name="stats", description="Show player stats")
+    @channelguessr_group.command(name="stats", description="Show player stats")
     @app_commands.describe(user="The user to show stats for (defaults to yourself)")
     async def stats(
         self,
@@ -134,18 +134,18 @@ class GameCommands(commands.Cog):
 
         await interaction.followup.send(message)
 
-    @geoguessr_group.command(name="help", description="Show help for the game")
+    @channelguessr_group.command(name="help", description="Show help for the game")
     async def help(self, interaction: discord.Interaction):
         """Show help information."""
         help_text = """
-**Discord Message Geoguessr**
+**Channelguessr**
 
 A game where you guess which channel a message came from and when it was posted!
 
 **How to Play:**
-1. Use `/geoguessr start` to begin a round
+1. Use `/channelguessr start` to begin a round
 2. You'll see a mystery message with some context
-3. Use `/geoguessr guess` to submit your guess
+3. Use `/channelguessr guess` to submit your guess
 4. After 60 seconds, the round ends and scores are revealed
 
 **Scoring:**
@@ -153,11 +153,11 @@ A game where you guess which channel a message came from and when it was posted!
 - **Time:** 500 points if within 1 day, scaling down to 0
 
 **Commands:**
-- `/geoguessr start` - Start a new round
-- `/geoguessr guess <channel> <time>` - Submit your guess
-- `/geoguessr skip` - Skip the current round (mods only)
-- `/geoguessr leaderboard` - View the leaderboard
-- `/geoguessr stats [user]` - View player stats
+- `/channelguessr start` - Start a new round
+- `/channelguessr guess <channel> <time>` - Submit your guess
+- `/channelguessr skip` - Skip the current round (mods only)
+- `/channelguessr leaderboard` - View the leaderboard
+- `/channelguessr stats [user]` - View player stats
 """
         await interaction.response.send_message(help_text, ephemeral=True)
 

@@ -70,7 +70,7 @@ def format_game_message(
     lines = [
         "```",
         "╭──────────────────────────────────────╮",
-        f"│  DISCORD GEOGUESSR - ROUND #{round_number:<7}│",
+        f"│  CHANNELGUESSR - ROUND #{round_number:<12}│",
         "╰──────────────────────────────────────╯",
         "```",
         "",
@@ -101,7 +101,7 @@ def format_game_message(
     lines.extend(
         [
             "───────────────────────────────────────",
-            "**Which channel?** Use `/geoguessr guess`",
+            "**Which channel?** Use `/channelguessr guess`",
             "**When was this posted?**",
             f"You have {timeout_seconds} seconds!",
         ]
@@ -185,7 +185,7 @@ def format_leaderboard(
     ]
 
     if not players:
-        lines.append("*No players yet! Start a game with `/geoguessr start`*")
+        lines.append("*No players yet! Start a game with `/channelguessr start`*")
         return "\n".join(lines)
 
     medals = ["", "", ""]

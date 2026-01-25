@@ -1,5 +1,5 @@
 [project]
-name = "discord-guessr"
+name = "channelguessr"
 version = "0.1.0"
 description = "A Discord bot game where players guess which channel a message came from"
 readme = "README.md"

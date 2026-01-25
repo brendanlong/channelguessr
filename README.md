@@ -1,4 +1,4 @@
-# Discord Message Geoguessr
+# Channelguessr
 
 A Discord bot game where players are shown a random "interesting" message (with surrounding context) and must guess which channel it came from and approximately when it was posted.
 
@@ -38,7 +38,7 @@ A Discord bot game where players are shown a random "interesting" message (with 
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd discord-geoguessr
+cd channelguessr
 
 # Install uv (if not already installed)
 # See https://docs.astral.sh/uv/getting-started/installation/
@@ -58,19 +58,19 @@ uv run python -m bot.main
 
 | Command | Description |
 |---------|-------------|
-| `/geoguessr start` | Start a new guessing round |
-| `/geoguessr guess <channel> <time>` | Submit your guess |
-| `/geoguessr skip` | Skip current round (mod only) |
-| `/geoguessr leaderboard` | Show server leaderboard |
-| `/geoguessr stats [user]` | Show player stats |
-| `/geoguessr help` | Show help information |
+| `/channelguessr start` | Start a new guessing round |
+| `/channelguessr guess <channel> <time>` | Submit your guess |
+| `/channelguessr skip` | Skip current round (mod only) |
+| `/channelguessr leaderboard` | Show server leaderboard |
+| `/channelguessr stats [user]` | Show player stats |
+| `/channelguessr help` | Show help information |
 
 ## How to Play
 
-1. Use `/geoguessr start` to begin a round
+1. Use `/channelguessr start` to begin a round
 2. You'll see a mystery message with context before and after
 3. Usernames are anonymized (User_A, User_B, etc.)
-4. Use `/geoguessr guess` to submit your channel and time guess
+4. Use `/channelguessr guess` to submit your channel and time guess
 5. After 60 seconds, the round ends and scores are revealed
 
 ## Scoring
@@ -113,7 +113,7 @@ MIN_MESSAGE_LENGTH = 200         # Minimum characters for "interesting"
 ## Project Structure
 
 ```
-discord-geoguessr/
+channelguessr/
 ├── bot/
 │   ├── main.py                # Entry point
 │   ├── commands/

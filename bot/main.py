@@ -1,4 +1,4 @@
-"""Main entry point for the Discord Geoguessr bot."""
+"""Main entry point for the Channelguessr bot."""
 
 import discord
 from discord.ext import commands
@@ -22,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class GeoguessrBot(commands.Bot):
+class ChannelguessrBot(commands.Bot):
     """Custom bot class with database and game service."""
 
     def __init__(self):
@@ -75,7 +75,7 @@ class GeoguessrBot(commands.Bot):
         # Set activity
         activity = discord.Activity(
             type=discord.ActivityType.playing,
-            name="/geoguessr start",
+            name="/channelguessr start",
         )
         await self.change_presence(activity=activity)
 
@@ -92,7 +92,7 @@ async def main():
         logger.error("DISCORD_TOKEN not set! Please set it in your .env file.")
         sys.exit(1)
 
-    bot = GeoguessrBot()
+    bot = ChannelguessrBot()
 
     try:
         await bot.start(Config.DISCORD_TOKEN)

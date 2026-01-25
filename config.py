@@ -9,7 +9,7 @@ class Config:
     DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
 
     # Database
-    DATABASE_PATH = os.environ.get("DATABASE_PATH", "geoguessr.db")
+    DATABASE_PATH = os.environ.get("DATABASE_PATH", "channelguessr.db")
 
     # Game settings
     ROUND_TIMEOUT_SECONDS = 60

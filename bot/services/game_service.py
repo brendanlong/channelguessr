@@ -206,7 +206,7 @@ class GameService:
         # Get active round
         active_round = await self.db.get_active_round(guild_id, channel_id)
         if not active_round:
-            return (False, "No active round! Start one with `/geoguessr start`")
+            return (False, "No active round! Start one with `/channelguessr start`")
 
         # Check if player already guessed
         if await self.db.player_has_guessed(active_round["id"], str(player.id)):

@@ -284,6 +284,14 @@ class Database:
 
     # Data deletion methods
 
+    async def get_all_guild_ids(self) -> set[str]:
+        """Get all guild IDs that have data in the database."""
+        guild_ids = set()
+        for table in ["game_rounds", "player_scores"]:
+            rows = await self.fetch_all(f"SELECT DISTINCT guild_id FROM {table}")
+            guild_ids.update(row["guild_id"] for row in rows)
+        return guild_ids
+
     async def delete_guild_data(self, guild_id: str) -> None:
         """Delete all data for a guild (used when bot is removed from a server)."""
         # Delete guesses for rounds in this guild

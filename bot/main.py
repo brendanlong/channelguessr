@@ -72,6 +72,25 @@ class ChannelguessrBot(commands.Bot):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info(f"Connected to {len(self.guilds)} guild(s)")
 
+        # Clean up data for guilds the bot is no longer in
+        await self._cleanup_orphaned_guild_data()
+
+    async def _cleanup_orphaned_guild_data(self):
+        """Delete data for guilds the bot is no longer a member of."""
+        if not self.db:
+            return
+
+        current_guild_ids = {str(guild.id) for guild in self.guilds}
+        stored_guild_ids = await self.db.get_all_guild_ids()
+        orphaned_guild_ids = stored_guild_ids - current_guild_ids
+
+        for guild_id in orphaned_guild_ids:
+            logger.info(f"Cleaning up orphaned data for guild {guild_id}")
+            await self.db.delete_guild_data(guild_id)
+
+        if orphaned_guild_ids:
+            logger.info(f"Cleaned up data for {len(orphaned_guild_ids)} orphaned guild(s)")
+
     async def on_guild_remove(self, guild: discord.Guild):
         """Called when the bot is removed from a guild. Deletes all guild data."""
         logger.info(f"Removed from guild: {guild.name} (ID: {guild.id})")

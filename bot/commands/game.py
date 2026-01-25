@@ -1,10 +1,11 @@
 """Game commands for Channelguessr."""
 
-import discord
-from discord import app_commands
-from discord.ext import commands
-from discord import ui
+import contextlib
 import logging
+
+import discord
+from discord import app_commands, ui
+from discord.ext import commands
 
 from utils.formatting import format_leaderboard, format_player_stats
 
@@ -23,9 +24,7 @@ class ClearDataConfirmView(ui.View):
     @ui.button(label="Yes, delete my data", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: ui.Button):
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "This confirmation is not for you.", ephemeral=True
-            )
+            await interaction.response.send_message("This confirmation is not for you.", ephemeral=True)
             return
 
         self.confirmed = True
@@ -47,15 +46,11 @@ class ClearDataConfirmView(ui.View):
     @ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: ui.Button):
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message(
-                "This confirmation is not for you.", ephemeral=True
-            )
+            await interaction.response.send_message("This confirmation is not for you.", ephemeral=True)
             return
 
         self.stop()
-        await interaction.response.edit_message(
-            content="Data deletion cancelled.", view=None
-        )
+        await interaction.response.edit_message(content="Data deletion cancelled.", view=None)
 
 
 class GameCommands(commands.Cog):
@@ -125,9 +120,7 @@ class GameCommands(commands.Cog):
         await interaction.followup.send(message)
 
     @skip.error
-    async def skip_error(
-        self, interaction: discord.Interaction, error: app_commands.AppCommandError
-    ):
+    async def skip_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         """Handle errors for the skip command."""
         if isinstance(error, app_commands.MissingPermissions):
             await interaction.response.send_message(
@@ -136,9 +129,7 @@ class GameCommands(commands.Cog):
             )
         else:
             logger.error(f"Error in skip command: {error}")
-            await interaction.response.send_message(
-                "An error occurred while skipping the round.", ephemeral=True
-            )
+            await interaction.response.send_message("An error occurred while skipping the round.", ephemeral=True)
 
     @app_commands.command(name="leaderboard", description="Show the server leaderboard")
     async def leaderboard(self, interaction: discord.Interaction):
@@ -206,7 +197,8 @@ A game where you guess which channel a message came from, when it was posted, an
         await interaction.response.send_message(help_text, ephemeral=True)
 
     @app_commands.command(
-        name="cleardata", description="Delete all your Channelguessr data from all servers"
+        name="cleardata",
+        description="Delete all your Channelguessr data from all servers",
     )
     async def cleardata(self, interaction: discord.Interaction):
         """Delete all user data with confirmation."""
@@ -227,12 +219,8 @@ A game where you guess which channel a message came from, when it was posted, an
         # Handle timeout
         await view.wait()
         if not view.confirmed and not interaction.is_expired():
-            try:
-                await interaction.edit_original_response(
-                    content="Data deletion timed out.", view=None
-                )
-            except discord.NotFound:
-                pass  # Message was already deleted
+            with contextlib.suppress(discord.NotFound):
+                await interaction.edit_original_response(content="Data deletion timed out.", view=None)
 
 
 async def setup(bot: commands.Bot):

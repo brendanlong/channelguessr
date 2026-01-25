@@ -1,8 +1,9 @@
 """Message formatting utilities for the game display."""
 
-import discord
 import re
-from typing import Sequence
+from collections.abc import Sequence
+
+import discord
 
 from models import Guess, PlayerScore
 
@@ -90,9 +91,7 @@ def format_game_message(
 
     # Try building the message, reducing context if it's too long
     while True:
-        result = _build_game_message(
-            target_message, before_list, after_list, round_number, timeout_seconds
-        )
+        result = _build_game_message(target_message, before_list, after_list, round_number, timeout_seconds)
 
         if len(result) <= DISCORD_MAX_LENGTH:
             return result
@@ -212,9 +211,7 @@ def format_round_results(
             guessed_channel_id = guess.guessed_channel_id
             if guessed_channel_id:
                 guessed_channel = guild.get_channel(int(guessed_channel_id))
-                channel_text = (
-                    guessed_channel.mention if guessed_channel else "Unknown"
-                )
+                channel_text = guessed_channel.mention if guessed_channel else "Unknown"
             else:
                 channel_text = "No guess"
 
@@ -262,10 +259,7 @@ def format_leaderboard(
         rounds_played = player.rounds_played
         perfect = player.perfect_guesses
 
-        lines.append(
-            f"{medal} <@{player_id}> - **{total_score:,}** pts "
-            f"({rounds_played} games, {perfect} perfect)"
-        )
+        lines.append(f"{medal} <@{player_id}> - **{total_score:,}** pts ({rounds_played} games, {perfect} perfect)")
 
     return "\n".join(lines)
 

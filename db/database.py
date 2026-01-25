@@ -1,7 +1,8 @@
-import aiosqlite
-from pathlib import Path
-from typing import Optional, Any
 import logging
+from pathlib import Path
+from typing import Any
+
+import aiosqlite
 
 from models import GameRound, Guess, PlayerScore, UserDataDeletion
 
@@ -13,7 +14,7 @@ class Database:
 
     def __init__(self, db_path: str):
         self.db_path = db_path
-        self._connection: Optional[aiosqlite.Connection] = None
+        self._connection: aiosqlite.Connection | None = None
 
     async def connect(self) -> None:
         """Connect to the database and run migrations."""
@@ -42,10 +43,7 @@ class Database:
 
         for migration_file in sorted(migrations_dir.glob("*.sql")):
             # Check if migration already applied
-            cursor = await self._connection.execute(
-                "SELECT 1 FROM _migrations WHERE name = ?",
-                (migration_file.name,)
-            )
+            cursor = await self._connection.execute("SELECT 1 FROM _migrations WHERE name = ?", (migration_file.name,))
             if await cursor.fetchone():
                 logger.debug(f"Skipping already applied migration: {migration_file.name}")
                 continue
@@ -53,37 +51,26 @@ class Database:
             logger.info(f"Running migration: {migration_file.name}")
             sql = migration_file.read_text()
             await self._connection.executescript(sql)
-            await self._connection.execute(
-                "INSERT INTO _migrations (name) VALUES (?)",
-                (migration_file.name,)
-            )
+            await self._connection.execute("INSERT INTO _migrations (name) VALUES (?)", (migration_file.name,))
             await self._connection.commit()
 
-    async def execute(
-        self, query: str, params: tuple = ()
-    ) -> aiosqlite.Cursor:
+    async def execute(self, query: str, params: tuple = ()) -> aiosqlite.Cursor:
         """Execute a query and return the cursor."""
         cursor = await self._connection.execute(query, params)
         await self._connection.commit()
         return cursor
 
-    async def fetch_one(
-        self, query: str, params: tuple = ()
-    ) -> Optional[aiosqlite.Row]:
+    async def fetch_one(self, query: str, params: tuple = ()) -> aiosqlite.Row | None:
         """Fetch a single row."""
         cursor = await self._connection.execute(query, params)
         return await cursor.fetchone()
 
-    async def fetch_all(
-        self, query: str, params: tuple = ()
-    ) -> list[aiosqlite.Row]:
+    async def fetch_all(self, query: str, params: tuple = ()) -> list[aiosqlite.Row]:
         """Fetch all rows."""
         cursor = await self._connection.execute(query, params)
         return await cursor.fetchall()
 
-    async def fetch_value(
-        self, query: str, params: tuple = ()
-    ) -> Optional[Any]:
+    async def fetch_value(self, query: str, params: tuple = ()) -> Any | None:
         """Fetch a single value from the first column of the first row."""
         row = await self.fetch_one(query, params)
         return row[0] if row else None
@@ -117,9 +104,7 @@ class Database:
         )
         return cursor.lastrowid
 
-    async def get_active_round(
-        self, guild_id: str, game_channel_id: str
-    ) -> Optional[GameRound]:
+    async def get_active_round(self, guild_id: str, game_channel_id: str) -> GameRound | None:
         """Get the active round for a channel."""
         row = await self.fetch_one(
             """
@@ -160,12 +145,12 @@ class Database:
         self,
         round_id: int,
         player_id: str,
-        guessed_channel_id: Optional[str],
-        guessed_timestamp_ms: Optional[int],
+        guessed_channel_id: str | None,
+        guessed_timestamp_ms: int | None,
         channel_correct: bool,
         time_score: int,
-        guessed_author_id: Optional[str] = None,
-        author_correct: Optional[bool] = None,
+        guessed_author_id: str | None = None,
+        author_correct: bool | None = None,
     ) -> bool:
         """Add a player guess. Returns True if successful."""
         try:
@@ -246,9 +231,7 @@ class Database:
             ),
         )
 
-    async def get_leaderboard(
-        self, guild_id: str, limit: int = 10
-    ) -> list[PlayerScore]:
+    async def get_leaderboard(self, guild_id: str, limit: int = 10) -> list[PlayerScore]:
         """Get the top players for a guild."""
         rows = await self.fetch_all(
             """
@@ -261,9 +244,7 @@ class Database:
         )
         return [PlayerScore(**dict(row)) for row in rows]
 
-    async def get_player_stats(
-        self, guild_id: str, player_id: str
-    ) -> Optional[PlayerScore]:
+    async def get_player_stats(self, guild_id: str, player_id: str) -> PlayerScore | None:
         """Get a player's stats."""
         row = await self.fetch_one(
             """
@@ -347,8 +328,7 @@ class Database:
         )
 
         logger.info(
-            f"Deleted all data for user {user_id}: "
-            f"{guesses_count} guesses, {scores_count} server score records"
+            f"Deleted all data for user {user_id}: {guesses_count} guesses, {scores_count} server score records"
         )
 
         return UserDataDeletion(

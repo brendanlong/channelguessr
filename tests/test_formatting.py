@@ -1,7 +1,6 @@
 """Tests for message formatting utilities."""
 
-import pytest
-from utils.formatting import format_game_message, DISCORD_MAX_LENGTH
+from utils.formatting import DISCORD_MAX_LENGTH, format_game_message
 
 
 class TestFormatGameMessage:
@@ -69,14 +68,8 @@ class TestFormatGameMessage:
 
         # Lots of long context
         long_content = "B" * 450
-        before = [
-            mock_discord_message(content=long_content, author_id=i)
-            for i in range(2, 7)
-        ]
-        after = [
-            mock_discord_message(content=long_content, author_id=i)
-            for i in range(7, 12)
-        ]
+        before = [mock_discord_message(content=long_content, author_id=i) for i in range(2, 7)]
+        after = [mock_discord_message(content=long_content, author_id=i) for i in range(7, 12)]
 
         result = format_game_message(target, before, after, round_number=1, timeout_seconds=60)
 

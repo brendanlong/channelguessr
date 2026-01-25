@@ -1,24 +1,24 @@
 """Game service for managing game rounds."""
 
-import discord
-from discord.ext import commands
 import asyncio
 import logging
-from typing import Optional
 
-from config import Config
-from db.database import Database
-from utils.snowflake import snowflake_to_timestamp_ms
-from utils.formatting import (
-    format_game_message,
-    format_round_results,
-)
+import discord
+from discord.ext import commands
+
+from bot.services.message_selector import MessageSelector
 from bot.services.scoring_service import (
     calculate_time_score,
     calculate_total_score,
     is_perfect_guess,
 )
-from bot.services.message_selector import MessageSelector
+from config import Config
+from db.database import Database
+from utils.formatting import (
+    format_game_message,
+    format_round_results,
+)
+from utils.snowflake import snowflake_to_timestamp_ms
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,7 @@ class GameService:
         self.message_selector = MessageSelector()
         self._active_timers: dict[str, asyncio.Task] = {}
 
-    async def start_round(
-        self, guild: discord.Guild, channel: discord.TextChannel
-    ) -> tuple[bool, str]:
+    async def start_round(self, guild: discord.Guild, channel: discord.TextChannel) -> tuple[bool, str]:
         """Start a new game round.
 
         Returns (success, message) tuple.
@@ -65,9 +63,7 @@ class GameService:
 
         # Fetch context messages
         logger.info("Fetching context messages around target...")
-        before_messages, after_messages = await self._fetch_context(
-            target_channel, target_message
-        )
+        before_messages, after_messages = await self._fetch_context(target_channel, target_message)
         logger.info(f"Fetched {len(before_messages)} before and {len(after_messages)} after context messages")
 
         # Create round in database
@@ -98,9 +94,7 @@ class GameService:
 
         # Start timeout timer
         timer_key = f"{guild_id}:{channel_id}"
-        self._active_timers[timer_key] = asyncio.create_task(
-            self._round_timeout(round_id, guild, channel)
-        )
+        self._active_timers[timer_key] = asyncio.create_task(self._round_timeout(round_id, guild, channel))
 
         return (True, "")
 
@@ -118,9 +112,7 @@ class GameService:
         try:
             # Fetch messages before
             logger.debug(f"Fetching {context_size} messages before target in #{channel.name}")
-            async for msg in channel.history(
-                limit=context_size, before=target_message, oldest_first=False
-            ):
+            async for msg in channel.history(limit=context_size, before=target_message, oldest_first=False):
                 before_messages.append(msg)
 
             # Reverse to get chronological order
@@ -128,9 +120,7 @@ class GameService:
 
             # Fetch messages after
             logger.debug(f"Fetching {context_size} messages after target in #{channel.name}")
-            async for msg in channel.history(
-                limit=context_size, after=target_message, oldest_first=True
-            ):
+            async for msg in channel.history(limit=context_size, after=target_message, oldest_first=True):
                 after_messages.append(msg)
 
         except discord.Forbidden:
@@ -138,9 +128,7 @@ class GameService:
 
         return (before_messages, after_messages)
 
-    async def _round_timeout(
-        self, round_id: int, guild: discord.Guild, channel: discord.TextChannel
-    ):
+    async def _round_timeout(self, round_id: int, guild: discord.Guild, channel: discord.TextChannel):
         """Handle round timeout."""
         await asyncio.sleep(Config.ROUND_TIMEOUT_SECONDS)
 
@@ -161,15 +149,14 @@ class GameService:
         logger.info(f"Ending round {round_id} with status '{status}'")
 
         # Get round info
-        row = await self.db.fetch_one(
-            "SELECT * FROM game_rounds WHERE id = ?", (round_id,)
-        )
+        row = await self.db.fetch_one("SELECT * FROM game_rounds WHERE id = ?", (round_id,))
 
         if not row or row["status"] != "active":
             logger.warning(f"Round {round_id} not active or not found, skipping end_round")
             return
 
         from models import GameRound
+
         round_info = GameRound(**dict(row))
 
         # Mark round as ended
@@ -189,12 +176,8 @@ class GameService:
         # Update player scores
         for guess in guesses:
             author_correct = guess.author_correct or False
-            total_score = calculate_total_score(
-                guess.channel_correct, guess.time_score, author_correct
-            )
-            is_perfect = is_perfect_guess(
-                guess.channel_correct, guess.time_score, author_correct
-            )
+            total_score = calculate_total_score(guess.channel_correct, guess.time_score, author_correct)
+            is_perfect = is_perfect_guess(guess.channel_correct, guess.time_score, author_correct)
 
             await self.db.update_player_score(
                 guild_id=str(guild.id),
@@ -247,23 +230,16 @@ class GameService:
         if guessed_timestamp_ms is None:
             return (
                 False,
-                "Couldn't understand that time. Try formats like: "
-                "'March 2024', 'Jan 15 2023', '2024-06-01'",
+                "Couldn't understand that time. Try formats like: 'March 2024', 'Jan 15 2023', '2024-06-01'",
             )
 
         # Calculate scores
         channel_correct = str(guessed_channel.id) == active_round.target_channel_id
-        time_score = calculate_time_score(
-            guessed_timestamp_ms, active_round.target_timestamp_ms
-        )
+        time_score = calculate_time_score(guessed_timestamp_ms, active_round.target_timestamp_ms)
 
         # Calculate author score
         guessed_author_id = str(guessed_author.id) if guessed_author else None
-        author_correct = (
-            guessed_author_id == active_round.target_author_id
-            if guessed_author_id
-            else False
-        )
+        author_correct = guessed_author_id == active_round.target_author_id if guessed_author_id else False
 
         # Save guess
         await self.db.add_guess(
@@ -280,7 +256,7 @@ class GameService:
         total_score = calculate_total_score(channel_correct, time_score, author_correct)
         return (True, f"Guess submitted! You'll score **{total_score}** points.")
 
-    def _parse_time_guess(self, time_str: str) -> Optional[int]:
+    def _parse_time_guess(self, time_str: str) -> int | None:
         """Parse a time string into Unix timestamp in milliseconds.
 
         Supports various formats like:
@@ -370,9 +346,7 @@ class GameService:
             month = month_map.get(month_str)
             if month:
                 try:
-                    dt = datetime(
-                        int(year_str), month, int(day_str), tzinfo=timezone.utc
-                    )
+                    dt = datetime(int(year_str), month, int(day_str), tzinfo=timezone.utc)
                     return int(dt.timestamp() * 1000)
                 except ValueError:
                     pass
@@ -384,9 +358,7 @@ class GameService:
 
         return None
 
-    async def skip_round(
-        self, guild: discord.Guild, channel: discord.TextChannel
-    ) -> tuple[bool, str]:
+    async def skip_round(self, guild: discord.Guild, channel: discord.TextChannel) -> tuple[bool, str]:
         """Skip the current round (moderator only).
 
         Returns (success, message) tuple.

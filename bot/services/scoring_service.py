@@ -28,17 +28,13 @@ def calculate_time_score(guessed_timestamp_ms: int, actual_timestamp_ms: int) ->
         return 0
 
 
-def calculate_total_score(
-    channel_correct: bool, time_score: int, author_correct: bool = False
-) -> int:
+def calculate_total_score(channel_correct: bool, time_score: int, author_correct: bool = False) -> int:
     """Calculate total score for a guess."""
     channel_points = Config.CHANNEL_SCORE if channel_correct else 0
     author_points = Config.AUTHOR_SCORE if author_correct else 0
     return channel_points + time_score + author_points
 
 
-def is_perfect_guess(
-    channel_correct: bool, time_score: int, author_correct: bool = False
-) -> bool:
+def is_perfect_guess(channel_correct: bool, time_score: int, author_correct: bool = False) -> bool:
     """Check if a guess is perfect (max channel + time within 1 day + author correct)."""
     return channel_correct and time_score == Config.TIME_MAX_SCORE and author_correct

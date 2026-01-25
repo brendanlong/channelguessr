@@ -1,18 +1,19 @@
 """Main entry point for the Channelguessr bot."""
 
-import discord
-from discord.ext import commands
 import asyncio
 import logging
 import sys
 from pathlib import Path
 
+import discord
+from discord.ext import commands
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from bot.services.game_service import GameService
 from config import Config
 from db.database import Database
-from bot.services.game_service import GameService
 
 # Configure logging
 logging.basicConfig(

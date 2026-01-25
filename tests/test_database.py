@@ -315,13 +315,9 @@ class TestUserDataDeletion:
         await db.update_player_score("guild1", "other_user", 300, False)
 
         # Verify data exists before deletion
-        guesses = await db.fetch_all(
-            "SELECT * FROM guesses WHERE player_id = ?", ("user_to_delete",)
-        )
+        guesses = await db.fetch_all("SELECT * FROM guesses WHERE player_id = ?", ("user_to_delete",))
         assert len(guesses) == 2
-        scores = await db.fetch_all(
-            "SELECT * FROM player_scores WHERE player_id = ?", ("user_to_delete",)
-        )
+        scores = await db.fetch_all("SELECT * FROM player_scores WHERE player_id = ?", ("user_to_delete",))
         assert len(scores) == 2
 
         # Delete user data
@@ -332,23 +328,15 @@ class TestUserDataDeletion:
         assert result.scores == 2
 
         # Verify data is gone
-        guesses = await db.fetch_all(
-            "SELECT * FROM guesses WHERE player_id = ?", ("user_to_delete",)
-        )
+        guesses = await db.fetch_all("SELECT * FROM guesses WHERE player_id = ?", ("user_to_delete",))
         assert len(guesses) == 0
-        scores = await db.fetch_all(
-            "SELECT * FROM player_scores WHERE player_id = ?", ("user_to_delete",)
-        )
+        scores = await db.fetch_all("SELECT * FROM player_scores WHERE player_id = ?", ("user_to_delete",))
         assert len(scores) == 0
 
         # Verify other user's data is still there
-        other_guesses = await db.fetch_all(
-            "SELECT * FROM guesses WHERE player_id = ?", ("other_user",)
-        )
+        other_guesses = await db.fetch_all("SELECT * FROM guesses WHERE player_id = ?", ("other_user",))
         assert len(other_guesses) == 1
-        other_scores = await db.fetch_all(
-            "SELECT * FROM player_scores WHERE player_id = ?", ("other_user",)
-        )
+        other_scores = await db.fetch_all("SELECT * FROM player_scores WHERE player_id = ?", ("other_user",))
         assert len(other_scores) == 1
 
     @pytest.mark.asyncio

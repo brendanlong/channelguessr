@@ -1,6 +1,6 @@
 """Tests for message selector."""
 
-from bot.services.message_selector import is_interesting_message, URL_PATTERN
+from bot.services.message_selector import URL_PATTERN, is_interesting_message
 
 
 class TestUrlPattern:

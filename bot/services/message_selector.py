@@ -1,11 +1,11 @@
 """Service for selecting random messages from guild history."""
 
-import discord
 import logging
 import random
 import re
 import time
-from typing import Optional
+
+import discord
 
 from config import Config
 from utils.snowflake import timestamp_ms_to_snowflake
@@ -42,18 +42,13 @@ def is_interesting_message(message: discord.Message) -> bool:
         return True
 
     # Check for URLs
-    if URL_PATTERN.search(message.content):
-        return True
-
-    return False
+    return bool(URL_PATTERN.search(message.content))
 
 
 class MessageSelector:
     """Service for selecting random messages from guild history."""
 
-    async def select_random_message(
-        self, guild: discord.Guild
-    ) -> Optional[tuple[discord.Message, discord.TextChannel]]:
+    async def select_random_message(self, guild: discord.Guild) -> tuple[discord.Message, discord.TextChannel] | None:
         """Select a random interesting message from the guild's history.
 
         Returns a tuple of (message, channel) if found, or None if no
@@ -81,8 +76,7 @@ class MessageSelector:
             after_snowflake = timestamp_ms_to_snowflake(random_timestamp_ms)
 
             logger.info(
-                f"Message search attempt {attempt + 1}/{Config.MAX_SEARCH_RETRIES}: "
-                f"checking #{channel.name}..."
+                f"Message search attempt {attempt + 1}/{Config.MAX_SEARCH_RETRIES}: checking #{channel.name}..."
             )
 
             try:
@@ -98,23 +92,17 @@ class MessageSelector:
                 # If we got very few messages, this channel/time is too sparse
                 if len(messages) < 5:
                     logger.info(
-                        f"Channel #{channel.name} too sparse at this time "
-                        f"({len(messages)} messages found), retrying..."
+                        f"Channel #{channel.name} too sparse at this time ({len(messages)} messages found), retrying..."
                     )
                     continue
 
                 # Find the first interesting message
                 for msg in messages:
                     if is_interesting_message(msg):
-                        logger.info(
-                            f"Selected message {msg.id} from #{channel.name} "
-                            f"on attempt {attempt + 1}"
-                        )
+                        logger.info(f"Selected message {msg.id} from #{channel.name} on attempt {attempt + 1}")
                         return (msg, channel)
 
-                logger.info(
-                    f"No interesting messages in batch of {len(messages)} from #{channel.name}, retrying..."
-                )
+                logger.info(f"No interesting messages in batch of {len(messages)} from #{channel.name}, retrying...")
 
             except discord.Forbidden:
                 logger.warning(f"Lost permission to read channel #{channel.name}")
@@ -126,14 +114,10 @@ class MessageSelector:
                 logger.warning(f"HTTP error fetching history: {e}")
                 continue
 
-        logger.warning(
-            f"Failed to find interesting message after {Config.MAX_SEARCH_RETRIES} attempts"
-        )
+        logger.warning(f"Failed to find interesting message after {Config.MAX_SEARCH_RETRIES} attempts")
         return None
 
-    def _get_readable_channels(
-        self, guild: discord.Guild
-    ) -> list[discord.TextChannel]:
+    def _get_readable_channels(self, guild: discord.Guild) -> list[discord.TextChannel]:
         """Get list of text channels the bot can read."""
         readable = []
         for channel in guild.text_channels:

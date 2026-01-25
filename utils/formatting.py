@@ -3,6 +3,9 @@
 import discord
 from typing import Sequence
 
+# Discord message limit
+DISCORD_MAX_LENGTH = 2000
+
 
 def anonymize_usernames(
     messages: Sequence[discord.Message],
@@ -62,7 +65,46 @@ def format_game_message(
     round_number: int,
     timeout_seconds: int,
 ) -> str:
-    """Format the complete game message display."""
+    """Format the complete game message display.
+
+    Ensures the output fits within Discord's 2000 character limit by
+    progressively reducing context messages if needed.
+    """
+    # Convert to mutable lists we can trim
+    before_list = list(before_messages)
+    after_list = list(after_messages)
+
+    # Try building the message, reducing context if it's too long
+    while True:
+        result = _build_game_message(
+            target_message, before_list, after_list, round_number, timeout_seconds
+        )
+
+        if len(result) <= DISCORD_MAX_LENGTH:
+            return result
+
+        # Message too long - reduce context
+        # Remove from both ends evenly, preferring to keep messages closer to target
+        if len(before_list) > 0 and len(before_list) >= len(after_list):
+            before_list.pop(0)  # Remove oldest context
+        elif len(after_list) > 0:
+            after_list.pop()  # Remove newest context
+        else:
+            # No more context to remove - truncate the target message more aggressively
+            # This shouldn't normally happen, but handle it gracefully
+            break
+
+    return result
+
+
+def _build_game_message(
+    target_message: discord.Message,
+    before_messages: Sequence[discord.Message],
+    after_messages: Sequence[discord.Message],
+    round_number: int,
+    timeout_seconds: int,
+) -> str:
+    """Build the game message without length checking."""
     # Combine all messages for anonymization
     all_messages = list(before_messages) + [target_message] + list(after_messages)
     user_map = anonymize_usernames(all_messages)

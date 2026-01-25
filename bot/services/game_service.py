@@ -145,7 +145,10 @@ class GameService:
         await asyncio.sleep(Config.ROUND_TIMEOUT_SECONDS)
 
         # End the round
-        await self.end_round(round_id, guild, channel)
+        try:
+            await self.end_round(round_id, guild, channel)
+        except Exception:
+            logger.exception(f"Error ending round {round_id} after timeout")
 
     async def end_round(
         self,
@@ -169,11 +172,12 @@ class GameService:
         # Mark round as ended
         await self.db.end_round(round_id, status)
 
-        # Cancel timer if exists
+        # Cancel timer if exists (but not if we ARE the timer task)
         timer_key = f"{round_info['guild_id']}:{round_info['game_channel_id']}"
         if timer_key in self._active_timers:
-            self._active_timers[timer_key].cancel()
-            del self._active_timers[timer_key]
+            timer_task = self._active_timers.pop(timer_key)
+            if timer_task is not asyncio.current_task():
+                timer_task.cancel()
 
         # Get guesses
         guess_rows = await self.db.get_guesses_for_round(round_id)

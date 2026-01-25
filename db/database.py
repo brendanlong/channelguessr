@@ -27,12 +27,34 @@ class Database:
 
     async def _run_migrations(self) -> None:
         """Run all SQL migration files."""
+        # Create migrations tracking table
+        await self._connection.execute("""
+            CREATE TABLE IF NOT EXISTS _migrations (
+                name TEXT PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await self._connection.commit()
+
         migrations_dir = Path(__file__).parent / "migrations"
 
         for migration_file in sorted(migrations_dir.glob("*.sql")):
+            # Check if migration already applied
+            cursor = await self._connection.execute(
+                "SELECT 1 FROM _migrations WHERE name = ?",
+                (migration_file.name,)
+            )
+            if await cursor.fetchone():
+                logger.debug(f"Skipping already applied migration: {migration_file.name}")
+                continue
+
             logger.info(f"Running migration: {migration_file.name}")
             sql = migration_file.read_text()
             await self._connection.executescript(sql)
+            await self._connection.execute(
+                "INSERT INTO _migrations (name) VALUES (?)",
+                (migration_file.name,)
+            )
             await self._connection.commit()
 
     async def execute(

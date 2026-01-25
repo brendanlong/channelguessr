@@ -1,3 +1,4 @@
+*.db
 /credentials
 
 # Byte-compiled / optimized / DLL files

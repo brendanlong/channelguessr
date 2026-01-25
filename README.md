@@ -4,7 +4,7 @@ A Discord bot game where players are shown a random "interesting" message (with 
 
 ## Features
 
-- **Real-time message indexing**: The bot automatically indexes interesting messages as they're posted
+- **Random message selection**: The bot randomly selects interesting messages from your server's history
 - **Context display**: Shows messages before and after the mystery message
 - **Anonymized usernames**: Prevents guessing based on who frequents which channel
 - **Scoring system**: Points for correct channel (500) and time accuracy (up to 500)
@@ -86,25 +86,28 @@ uv run python -m bot.main
 
 **Maximum score per round: 1000 points**
 
-## Message Indexing
+## Message Selection
 
-The bot automatically indexes messages that meet these criteria:
-- 200+ characters long
-- Contains images/attachments
-- Contains links
-- Has 3+ reactions
+When a round starts, the bot randomly selects a message from your server's history. A message is considered "interesting" if it has ANY of:
+- 200+ characters of text
+- Attachments (images, files)
+- Embeds
+- URLs
 
-Messages less than 24 hours old are excluded from the game.
+Messages less than 24 hours old are excluded from the game. The bot searches up to 1 year back in history.
 
 ## Configuration
 
 Edit `config.py` to customize:
 
 ```python
-ROUND_TIMEOUT_SECONDS = 60      # Time limit per round
+ROUND_TIMEOUT_SECONDS = 60       # Time limit per round
 CONTEXT_MESSAGES = 5             # Messages shown before/after
-MIN_INTERESTING_MESSAGES = 10    # Minimum pool size to start
 MIN_MESSAGE_AGE_HOURS = 24       # Exclude recent messages
+MESSAGE_SEARCH_LIMIT = 100       # Messages to fetch per API call
+MAX_SEARCH_RETRIES = 5           # How many channel/time combos to try
+LOOKBACK_DAYS = 365              # How far back to look for messages
+MIN_MESSAGE_LENGTH = 200         # Minimum characters for "interesting"
 ```
 
 ## Project Structure
@@ -112,26 +115,27 @@ MIN_MESSAGE_AGE_HOURS = 24       # Exclude recent messages
 ```
 discord-geoguessr/
 ├── bot/
-│   ├── main.py              # Entry point
+│   ├── main.py                # Entry point
 │   ├── commands/
-│   │   └── game.py          # Slash commands
-│   ├── events/
-│   │   ├── message.py       # Message indexing
-│   │   └── reaction.py      # Reaction tracking
+│   │   └── game.py            # Slash commands
 │   └── services/
-│       ├── game_service.py  # Game logic
+│       ├── game_service.py    # Game logic
+│       ├── message_selector.py # Random message selection
 │       └── scoring_service.py
 ├── db/
-│   ├── database.py          # SQLite wrapper
+│   ├── database.py            # SQLite wrapper
 │   └── migrations/
 │       └── 001_initial.sql
+├── tests/                     # Test suite
+│   ├── conftest.py
+│   └── test_*.py
 ├── utils/
-│   ├── snowflake.py         # Discord ID utilities
-│   └── formatting.py        # Display formatting
+│   ├── snowflake.py           # Discord ID utilities
+│   └── formatting.py          # Display formatting
 ├── docs/
-│   └── DESIGN.md            # Design document
+│   └── DESIGN.md              # Design document
 ├── config.py
-├── requirements.txt
+├── pyproject.toml
 └── README.md
 ```
 

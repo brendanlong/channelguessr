@@ -39,11 +39,13 @@ Data is stored in a SQLite database hosted on [Fly.io](https://fly.io) infrastru
 
 ## Data Retention
 
-Game data is retained indefinitely to maintain leaderboards and player statistics.
+Game data is retained while the bot is in your server.
 
 ## Data Deletion
 
-Server administrators can request data deletion by opening an issue on the [GitHub repository](https://github.com/brendanlong/channelguessr).
+**Automatic deletion:** When the bot is removed from a server, all data for that server is automatically and permanently deleted. This includes all game rounds, player guesses, and leaderboard scores.
+
+**Manual requests:** Server administrators can also request data deletion at any time by opening an issue on the [GitHub repository](https://github.com/brendanlong/channelguessr).
 
 ## Third-Party Services
 

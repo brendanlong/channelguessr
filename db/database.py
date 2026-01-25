@@ -281,3 +281,27 @@ class Database:
             (guild_id, guild_id, player_id),
         )
         return result or 1
+
+    # Data deletion methods
+
+    async def delete_guild_data(self, guild_id: str) -> None:
+        """Delete all data for a guild (used when bot is removed from a server)."""
+        # Delete guesses for rounds in this guild
+        await self.execute(
+            """
+            DELETE FROM guesses
+            WHERE round_id IN (SELECT id FROM game_rounds WHERE guild_id = ?)
+            """,
+            (guild_id,),
+        )
+        # Delete game rounds
+        await self.execute(
+            "DELETE FROM game_rounds WHERE guild_id = ?",
+            (guild_id,),
+        )
+        # Delete player scores
+        await self.execute(
+            "DELETE FROM player_scores WHERE guild_id = ?",
+            (guild_id,),
+        )
+        logger.info(f"Deleted all data for guild {guild_id}")

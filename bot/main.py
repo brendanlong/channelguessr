@@ -72,6 +72,12 @@ class ChannelguessrBot(commands.Bot):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info(f"Connected to {len(self.guilds)} guild(s)")
 
+    async def on_guild_remove(self, guild: discord.Guild):
+        """Called when the bot is removed from a guild. Deletes all guild data."""
+        logger.info(f"Removed from guild: {guild.name} (ID: {guild.id})")
+        if self.db:
+            await self.db.delete_guild_data(str(guild.id))
+
         # Set activity
         activity = discord.Activity(
             type=discord.ActivityType.playing,

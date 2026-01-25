@@ -246,28 +246,21 @@ def format_round_results(
             # Calculate total score (channel 500 + time + author 500)
             total_score = (500 if channel_correct else 0) + time_score + (500 if author_correct else 0)
 
-            # Get channel mention for guess
-            guessed_channel_id = guess.guessed_channel_id
-            if guessed_channel_id:
-                guessed_channel = guild.get_channel(int(guessed_channel_id))
-                channel_text = guessed_channel.mention if guessed_channel else "Unknown"
-            else:
-                channel_text = "No guess"
+            details = []
 
-            channel_emoji = "+" if channel_correct else "-"
+            channel_emoji = "✅" if channel_correct else "❌"
+            details.append(f"Channel: {channel_emoji}")
+
+            time_result = "❌" if time_score == 0 else f"+{time_score}"
+            details.append(f"Time: {time_result}")
 
             # Format author guess
             guessed_author_id = guess.guessed_author_id
             if guessed_author_id:
-                author_emoji = "+" if author_correct else "-"
-                author_text = f", Author: {author_emoji}"
-            else:
-                author_text = ""
+                author_emoji = "✅" if author_correct else "❌"
+                details.append(f"Author: {author_emoji}")
 
-            lines.append(
-                f"{i}. <@{player_id}>: **{total_score}** pts "
-                f"(Channel: {channel_emoji} {channel_text}, Time: +{time_score}{author_text})"
-            )
+            lines.append(f"{i}. <@{player_id}>: **{total_score}** pts ({', '.join(details)})")
     else:
         lines.append("*No guesses submitted!*")
 

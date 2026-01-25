@@ -8,6 +8,7 @@ import discord
 from discord import app_commands, ui
 from discord.ext import commands
 
+from config import Config
 from utils.formatting import format_leaderboard, format_player_stats
 
 if TYPE_CHECKING:
@@ -66,7 +67,16 @@ class GameCommands(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="start", description="Start a new Channelguessr round")
-    async def start(self, interaction: discord.Interaction):
+    @app_commands.describe(
+        context=f"Number of context messages to show before/after (default: {Config.CONTEXT_MESSAGES})",
+        timeout=f"Round timeout in seconds (default: {Config.ROUND_TIMEOUT_SECONDS})",
+    )
+    async def start(
+        self,
+        interaction: discord.Interaction,
+        context: app_commands.Range[int, 0, 20] | None = None,
+        timeout: app_commands.Range[int, 10, 300] | None = None,
+    ):
         """Start a new game round."""
         channel_name = getattr(interaction.channel, "name", "DM")
         logger.info(f"Start command invoked by {interaction.user} in #{channel_name}")
@@ -79,6 +89,8 @@ class GameCommands(commands.Cog):
         success, message = await self.bot.game_service.start_round(
             guild=interaction.guild,
             channel=interaction.channel,  # type: ignore[arg-type]
+            context_messages=context,
+            timeout_seconds=timeout,
         )
 
         if not success:

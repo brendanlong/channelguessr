@@ -32,11 +32,20 @@ class GameService:
         self.message_selector = MessageSelector()
         self._active_timers: dict[str, asyncio.Task] = {}
 
-    async def start_round(self, guild: discord.Guild, channel: discord.TextChannel) -> tuple[bool, str]:
+    async def start_round(
+        self,
+        guild: discord.Guild,
+        channel: discord.TextChannel,
+        context_messages: int | None = None,
+        timeout_seconds: int | None = None,
+    ) -> tuple[bool, str]:
         """Start a new game round.
 
         Returns (success, message) tuple.
         """
+        # Use provided values or fall back to config defaults
+        context_size = context_messages if context_messages is not None else Config.CONTEXT_MESSAGES
+        timeout = timeout_seconds if timeout_seconds is not None else Config.ROUND_TIMEOUT_SECONDS
         guild_id = str(guild.id)
         channel_id = str(channel.id)
 
@@ -63,7 +72,7 @@ class GameService:
 
         # Fetch context messages
         logger.info("Fetching context messages around target...")
-        before_messages, after_messages = await self._fetch_context(target_channel, target_message)
+        before_messages, after_messages = await self._fetch_context(target_channel, target_message, context_size)
         logger.info(f"Fetched {len(before_messages)} before and {len(after_messages)} after context messages")
 
         # Create round in database
@@ -86,7 +95,7 @@ class GameService:
             before_messages=before_messages,
             after_messages=after_messages,
             round_number=round_number,
-            timeout_seconds=Config.ROUND_TIMEOUT_SECONDS,
+            timeout_seconds=timeout,
         )
 
         await channel.send(game_text)
@@ -94,15 +103,14 @@ class GameService:
 
         # Start timeout timer
         timer_key = f"{guild_id}:{channel_id}"
-        self._active_timers[timer_key] = asyncio.create_task(self._round_timeout(round_id, guild, channel))
+        self._active_timers[timer_key] = asyncio.create_task(self._round_timeout(round_id, guild, channel, timeout))
 
         return (True, "")
 
     async def _fetch_context(
-        self, channel: discord.TextChannel, target_message: discord.Message
+        self, channel: discord.TextChannel, target_message: discord.Message, context_size: int
     ) -> tuple[list[discord.Message], list[discord.Message]]:
         """Fetch context messages around the target."""
-        context_size = Config.CONTEXT_MESSAGES
 
         # Fetch messages around the target
         # We need to fetch before and after separately for accuracy
@@ -128,9 +136,9 @@ class GameService:
 
         return (before_messages, after_messages)
 
-    async def _round_timeout(self, round_id: int, guild: discord.Guild, channel: discord.TextChannel):
+    async def _round_timeout(self, round_id: int, guild: discord.Guild, channel: discord.TextChannel, timeout: int):
         """Handle round timeout."""
-        await asyncio.sleep(Config.ROUND_TIMEOUT_SECONDS)
+        await asyncio.sleep(timeout)
 
         # End the round
         try:

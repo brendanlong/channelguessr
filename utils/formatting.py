@@ -200,7 +200,7 @@ def format_round_results(
     target_channel: discord.abc.GuildChannel | None,
     target_timestamp_ms: int,
     target_message_id: str,
-    target_author_id: str | None,
+    target_author_display_name: str | None,
     guesses: list[Guess],
     guild: discord.Guild,
 ) -> str:
@@ -210,9 +210,7 @@ def format_round_results(
     channel_id = target_channel.id if target_channel else 0
     message_link = f"https://discord.com/channels/{guild.id}/{channel_id}/{target_message_id}"
 
-    # Look up author to display name without pinging
-    author_member = guild.get_member(int(target_author_id)) if target_author_id else None
-    author_display = f"`@{author_member.display_name}`" if author_member else "`@unknown`"
+    author_display = f"`@{target_author_display_name}`" if target_author_display_name else "`@unknown`"
 
     channel_mention = target_channel.mention if target_channel else "#unknown"
     lines = [

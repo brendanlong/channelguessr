@@ -198,11 +198,27 @@ class GameService:
 
         # Format and send results
         target_channel = guild.get_channel(int(round_info.target_channel_id))
+
+        # Look up author display name (try cache first, then API)
+        target_author_display_name: str | None = None
+        if round_info.target_author_id:
+            author_id = int(round_info.target_author_id)
+            member = guild.get_member(author_id)
+            if member is None:
+                try:
+                    member = await guild.fetch_member(author_id)
+                except discord.NotFound:
+                    pass  # Member left the server
+                except discord.HTTPException:
+                    logger.warning(f"Failed to fetch member {author_id}")
+            if member:
+                target_author_display_name = member.display_name
+
         results_text = format_round_results(
             target_channel=target_channel,
             target_timestamp_ms=round_info.target_timestamp_ms,
             target_message_id=round_info.target_message_id,
-            target_author_id=round_info.target_author_id,
+            target_author_display_name=target_author_display_name,
             guesses=guesses,
             guild=guild,
         )

@@ -148,6 +148,11 @@ channelguessr/
 - discord.py 2.3+
 - aiosqlite
 
+## Legal
+
+- [Terms of Service](docs/TERMS_OF_SERVICE.md)
+- [Privacy Policy](docs/PRIVACY_POLICY.md)
+
 ## License
 
 MIT

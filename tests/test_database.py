@@ -34,6 +34,7 @@ class TestGameRounds:
             target_message_id="789",
             target_channel_id="101",
             target_timestamp_ms=1609459200000,
+            target_author_id="author123",
         )
         assert round_id is not None
         assert round_id > 0
@@ -47,6 +48,7 @@ class TestGameRounds:
             target_message_id="789",
             target_channel_id="101",
             target_timestamp_ms=1609459200000,
+            target_author_id="author123",
         )
 
         # Get active round
@@ -54,6 +56,7 @@ class TestGameRounds:
         assert active is not None
         assert active["id"] == round_id
         assert active["status"] == "active"
+        assert active["target_author_id"] == "author123"
 
     @pytest.mark.asyncio
     async def test_no_active_round_returns_none(self, db):
@@ -68,6 +71,7 @@ class TestGameRounds:
             target_message_id="789",
             target_channel_id="101",
             target_timestamp_ms=1609459200000,
+            target_author_id="author123",
         )
 
         await db.end_round(round_id, "completed")
@@ -94,6 +98,7 @@ class TestGameRounds:
             target_message_id="789",
             target_channel_id="101",
             target_timestamp_ms=1609459200000,
+            target_author_id="author123",
         )
         assert await db.get_round_number(guild_id) == 1
 
@@ -104,6 +109,7 @@ class TestGameRounds:
             target_message_id="790",
             target_channel_id="101",
             target_timestamp_ms=1609459200000,
+            target_author_id="author456",
         )
         assert await db.get_round_number(guild_id) == 2
 
@@ -118,6 +124,7 @@ class TestGuesses:
             target_message_id="789",
             target_channel_id="101",
             target_timestamp_ms=1609459200000,
+            target_author_id="author123",
         )
 
         result = await db.add_guess(
@@ -127,6 +134,8 @@ class TestGuesses:
             guessed_timestamp_ms=1609459200000,
             channel_correct=True,
             time_score=500,
+            guessed_author_id="author123",
+            author_correct=True,
         )
         assert result is True
 
@@ -138,6 +147,7 @@ class TestGuesses:
             target_message_id="789",
             target_channel_id="101",
             target_timestamp_ms=1609459200000,
+            target_author_id="author123",
         )
 
         # Initially hasn't guessed
@@ -166,6 +176,7 @@ class TestGuesses:
             target_message_id="789",
             target_channel_id="101",
             target_timestamp_ms=1609459200000,
+            target_author_id="author123",
         )
 
         # Add multiple guesses
@@ -176,6 +187,8 @@ class TestGuesses:
             guessed_timestamp_ms=1609459200000,
             channel_correct=True,
             time_score=500,
+            guessed_author_id="author123",
+            author_correct=True,
         )
         await db.add_guess(
             round_id=round_id,
@@ -184,6 +197,8 @@ class TestGuesses:
             guessed_timestamp_ms=1609459200000,
             channel_correct=False,
             time_score=300,
+            guessed_author_id="wrong_author",
+            author_correct=False,
         )
 
         guesses = await db.get_guesses_for_round(round_id)

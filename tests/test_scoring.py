@@ -71,7 +71,10 @@ class TestCalculateTimeScore:
 
 class TestCalculateTotalScore:
     def test_perfect_score(self):
+        # Without author
         assert calculate_total_score(True, 500) == 1000
+        # With author correct
+        assert calculate_total_score(True, 500, True) == 1500
 
     def test_correct_channel_no_time(self):
         assert calculate_total_score(True, 0) == 500
@@ -86,16 +89,28 @@ class TestCalculateTotalScore:
         assert calculate_total_score(True, 300) == 800
         assert calculate_total_score(False, 300) == 300
 
+    def test_author_points(self):
+        # Author correct adds 500 points
+        assert calculate_total_score(True, 500, True) == 1500
+        assert calculate_total_score(True, 500, False) == 1000
+        assert calculate_total_score(False, 0, True) == 500
+
 
 class TestIsPerfectGuess:
     def test_perfect(self):
-        assert is_perfect_guess(True, 500) is True
+        # Perfect requires channel + time + author
+        assert is_perfect_guess(True, 500, True) is True
+
+    def test_perfect_without_author(self):
+        # Without author correct, not perfect
+        assert is_perfect_guess(True, 500) is False
+        assert is_perfect_guess(True, 500, False) is False
 
     def test_wrong_channel(self):
-        assert is_perfect_guess(False, 500) is False
+        assert is_perfect_guess(False, 500, True) is False
 
     def test_imperfect_time(self):
-        assert is_perfect_guess(True, 400) is False
+        assert is_perfect_guess(True, 400, True) is False
 
     def test_both_wrong(self):
-        assert is_perfect_guess(False, 100) is False
+        assert is_perfect_guess(False, 100, False) is False

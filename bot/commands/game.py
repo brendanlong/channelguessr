@@ -44,15 +44,18 @@ class GameCommands(commands.Cog):
     @app_commands.describe(
         channel="The channel you think the message is from",
         time="When you think the message was posted (e.g., 'March 2024', 'Jan 15 2023')",
+        author="The user you think sent the message (optional, +500 points if correct)",
     )
     async def guess(
         self,
         interaction: discord.Interaction,
         channel: discord.TextChannel,
         time: str,
+        author: discord.Member = None,
     ):
         """Submit a guess for the current round."""
-        logger.info(f"Guess command invoked by {interaction.user}: channel=#{channel.name}, time='{time}'")
+        author_info = f", author=@{author.name}" if author else ""
+        logger.info(f"Guess command invoked by {interaction.user}: channel=#{channel.name}, time='{time}'{author_info}")
         await interaction.response.defer(ephemeral=True)
 
         success, message = await self.bot.game_service.submit_guess(
@@ -61,6 +64,7 @@ class GameCommands(commands.Cog):
             player=interaction.user,
             guessed_channel=channel,
             guessed_time=time,
+            guessed_author=author,
         )
 
         await interaction.followup.send(message, ephemeral=True)
@@ -143,7 +147,7 @@ class GameCommands(commands.Cog):
         help_text = """
 **Channelguessr**
 
-A game where you guess which channel a message came from and when it was posted!
+A game where you guess which channel a message came from, when it was posted, and who sent it!
 
 **How to Play:**
 1. Use `/channelguessr start` to begin a round
@@ -154,10 +158,11 @@ A game where you guess which channel a message came from and when it was posted!
 **Scoring:**
 - **Channel:** 500 points if correct
 - **Time:** 500 points if within 1 day, scaling down to 0
+- **Author:** 500 points if correct (optional)
 
 **Commands:**
 - `/channelguessr start` - Start a new round
-- `/channelguessr guess <channel> <time>` - Submit your guess
+- `/channelguessr guess <channel> <time> [author]` - Submit your guess
 - `/channelguessr skip` - Skip the current round (mods only)
 - `/channelguessr leaderboard` - View the leaderboard
 - `/channelguessr stats [user]` - View player stats

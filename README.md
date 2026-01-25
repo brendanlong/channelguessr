@@ -7,7 +7,7 @@ A Discord bot game where players are shown a random "interesting" message (with 
 - **Random message selection**: The bot randomly selects interesting messages from your server's history
 - **Context display**: Shows messages before and after the mystery message
 - **Anonymized usernames**: Prevents guessing based on who frequents which channel
-- **Scoring system**: Points for correct channel (500) and time accuracy (up to 500)
+- **Scoring system**: Points for correct channel (500), time accuracy (up to 500), and author (500)
 - **Leaderboards**: Track top players per server
 - **Player stats**: View individual performance
 
@@ -59,7 +59,7 @@ uv run python -m bot.main
 | Command | Description |
 |---------|-------------|
 | `/channelguessr start` | Start a new guessing round |
-| `/channelguessr guess <channel> <time>` | Submit your guess |
+| `/channelguessr guess <channel> <time> [author]` | Submit your guess |
 | `/channelguessr skip` | Skip current round (mod only) |
 | `/channelguessr leaderboard` | Show server leaderboard |
 | `/channelguessr stats [user]` | Show player stats |
@@ -83,8 +83,9 @@ uv run python -m bot.main
   - Within 3 months: 200 points
   - Within 6 months: 100 points
   - Within 1 year: 50 points
+- **Author**: 500 points if correct (optional)
 
-**Maximum score per round: 1000 points**
+**Maximum score per round: 1500 points**
 
 ## Message Selection
 

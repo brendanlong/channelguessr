@@ -73,13 +73,14 @@ class Database:
         target_message_id: str,
         target_channel_id: str,
         target_timestamp_ms: int,
+        target_author_id: str,
     ) -> int:
         """Create a new game round. Returns the round ID."""
         cursor = await self.execute(
             """
             INSERT INTO game_rounds
-            (guild_id, game_channel_id, target_message_id, target_channel_id, target_timestamp_ms)
-            VALUES (?, ?, ?, ?, ?)
+            (guild_id, game_channel_id, target_message_id, target_channel_id, target_timestamp_ms, target_author_id)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 guild_id,
@@ -87,6 +88,7 @@ class Database:
                 target_message_id,
                 target_channel_id,
                 target_timestamp_ms,
+                target_author_id,
             ),
         )
         return cursor.lastrowid
@@ -137,6 +139,8 @@ class Database:
         guessed_timestamp_ms: Optional[int],
         channel_correct: bool,
         time_score: int,
+        guessed_author_id: Optional[str] = None,
+        author_correct: Optional[bool] = None,
     ) -> bool:
         """Add a player guess. Returns True if successful."""
         try:
@@ -144,8 +148,8 @@ class Database:
                 """
                 INSERT OR REPLACE INTO guesses
                 (round_id, player_id, guessed_channel_id, guessed_timestamp_ms,
-                 channel_correct, time_score)
-                VALUES (?, ?, ?, ?, ?, ?)
+                 channel_correct, time_score, guessed_author_id, author_correct)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     round_id,
@@ -154,6 +158,8 @@ class Database:
                     guessed_timestamp_ms,
                     channel_correct,
                     time_score,
+                    guessed_author_id,
+                    author_correct,
                 ),
             )
             return True

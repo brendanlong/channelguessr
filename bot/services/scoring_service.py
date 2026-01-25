@@ -1,5 +1,10 @@
 """Scoring service for calculating game scores."""
 
+# Score constants
+CHANNEL_SCORE = 500
+TIME_MAX_SCORE = 500
+AUTHOR_SCORE = 500
+
 
 def calculate_time_score(guessed_timestamp_ms: int, actual_timestamp_ms: int) -> int:
     """Calculate score based on time accuracy.
@@ -26,12 +31,17 @@ def calculate_time_score(guessed_timestamp_ms: int, actual_timestamp_ms: int) ->
         return 0
 
 
-def calculate_total_score(channel_correct: bool, time_score: int) -> int:
+def calculate_total_score(
+    channel_correct: bool, time_score: int, author_correct: bool = False
+) -> int:
     """Calculate total score for a guess."""
-    channel_score = 500 if channel_correct else 0
-    return channel_score + time_score
+    channel_points = CHANNEL_SCORE if channel_correct else 0
+    author_points = AUTHOR_SCORE if author_correct else 0
+    return channel_points + time_score + author_points
 
 
-def is_perfect_guess(channel_correct: bool, time_score: int) -> bool:
-    """Check if a guess is perfect (max channel + time within 1 day)."""
-    return channel_correct and time_score == 500
+def is_perfect_guess(
+    channel_correct: bool, time_score: int, author_correct: bool = False
+) -> bool:
+    """Check if a guess is perfect (max channel + time within 1 day + author correct)."""
+    return channel_correct and time_score == TIME_MAX_SCORE and author_correct

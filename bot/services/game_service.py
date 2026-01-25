@@ -73,12 +73,14 @@ class GameService:
         # Create round in database
         round_number = await self.db.get_round_number(guild_id) + 1
         target_timestamp_ms = snowflake_to_timestamp_ms(target_message.id)
+        target_author_id = str(target_message.author.id)
         round_id = await self.db.create_round(
             guild_id=guild_id,
             game_channel_id=channel_id,
             target_message_id=str(target_message.id),
             target_channel_id=str(target_channel.id),
             target_timestamp_ms=target_timestamp_ms,
+            target_author_id=target_author_id,
         )
         logger.info(f"Created round {round_id} (round #{round_number})")
 
@@ -161,7 +163,7 @@ class GameService:
         )
 
         if not round_info or round_info["status"] != "active":
-            logger.debug(f"Round {round_id} not active or not found, skipping end_round")
+            logger.warning(f"Round {round_id} not active or not found, skipping end_round")
             return
 
         # Mark round as ended
@@ -180,10 +182,13 @@ class GameService:
 
         # Update player scores
         for guess in guesses:
+            author_correct = guess.get("author_correct") or False
             total_score = calculate_total_score(
-                guess["channel_correct"], guess["time_score"]
+                guess["channel_correct"], guess["time_score"], author_correct
             )
-            is_perfect = is_perfect_guess(guess["channel_correct"], guess["time_score"])
+            is_perfect = is_perfect_guess(
+                guess["channel_correct"], guess["time_score"], author_correct
+            )
 
             await self.db.update_player_score(
                 guild_id=str(guild.id),
@@ -197,6 +202,8 @@ class GameService:
         results_text = format_round_results(
             target_channel=target_channel,
             target_timestamp_ms=round_info["target_timestamp_ms"],
+            target_message_id=round_info["target_message_id"],
+            target_author_id=round_info["target_author_id"],
             guesses=guesses,
             guild=guild,
         )
@@ -211,6 +218,7 @@ class GameService:
         player: discord.Member,
         guessed_channel: discord.TextChannel,
         guessed_time: str,
+        guessed_author: discord.Member = None,
     ) -> tuple[bool, str]:
         """Submit a guess for the active round.
 
@@ -243,6 +251,14 @@ class GameService:
             guessed_timestamp_ms, active_round["target_timestamp_ms"]
         )
 
+        # Calculate author score
+        guessed_author_id = str(guessed_author.id) if guessed_author else None
+        author_correct = (
+            guessed_author_id == active_round["target_author_id"]
+            if guessed_author_id
+            else False
+        )
+
         # Save guess
         await self.db.add_guess(
             round_id=active_round["id"],
@@ -251,9 +267,11 @@ class GameService:
             guessed_timestamp_ms=guessed_timestamp_ms,
             channel_correct=channel_correct,
             time_score=time_score,
+            guessed_author_id=guessed_author_id,
+            author_correct=author_correct,
         )
 
-        total_score = calculate_total_score(channel_correct, time_score)
+        total_score = calculate_total_score(channel_correct, time_score, author_correct)
         return (True, f"Guess submitted! You'll score **{total_score}** points.")
 
     def _parse_time_guess(self, time_str: str) -> Optional[int]:

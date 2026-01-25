@@ -155,11 +155,15 @@ def _build_game_message(
 def format_round_results(
     target_channel: discord.TextChannel,
     target_timestamp_ms: int,
+    target_message_id: str,
+    target_author_id: str,
     guesses: list[dict],
     guild: discord.Guild,
 ) -> str:
     """Format the results of a completed round."""
     from utils.snowflake import format_timestamp
+
+    message_link = f"https://discord.com/channels/{guild.id}/{target_channel.id}/{target_message_id}"
 
     lines = [
         "```",
@@ -170,6 +174,8 @@ def format_round_results(
         "",
         f"**Channel:** {target_channel.mention}",
         f"**Posted:** {format_timestamp(target_timestamp_ms, 'f')} ({format_timestamp(target_timestamp_ms, 'R')})",
+        f"**Author:** <@{target_author_id}>",
+        f"**Message:** [Jump to message]({message_link})",
         "",
     ]
 
@@ -179,7 +185,11 @@ def format_round_results(
         # Sort by total score descending
         sorted_guesses = sorted(
             guesses,
-            key=lambda g: (g.get("channel_correct", False), g.get("time_score", 0)),
+            key=lambda g: (
+                g.get("channel_correct", False),
+                g.get("time_score", 0),
+                g.get("author_correct", False),
+            ),
             reverse=True,
         )
 
@@ -187,7 +197,10 @@ def format_round_results(
             player_id = guess["player_id"]
             channel_correct = guess.get("channel_correct", False)
             time_score = guess.get("time_score", 0)
-            total_score = (500 if channel_correct else 0) + time_score
+            author_correct = guess.get("author_correct") or False
+
+            # Calculate total score (channel 500 + time + author 500)
+            total_score = (500 if channel_correct else 0) + time_score + (500 if author_correct else 0)
 
             # Get channel mention for guess
             guessed_channel_id = guess.get("guessed_channel_id")
@@ -201,9 +214,17 @@ def format_round_results(
 
             channel_emoji = "+" if channel_correct else "-"
 
+            # Format author guess
+            guessed_author_id = guess.get("guessed_author_id")
+            if guessed_author_id:
+                author_emoji = "+" if author_correct else "-"
+                author_text = f", Author: {author_emoji}"
+            else:
+                author_text = ""
+
             lines.append(
                 f"{i}. <@{player_id}>: **{total_score}** pts "
-                f"(Channel: {channel_emoji} {channel_text}, Time: +{time_score})"
+                f"(Channel: {channel_emoji} {channel_text}, Time: +{time_score}{author_text})"
             )
     else:
         lines.append("*No guesses submitted!*")

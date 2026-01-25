@@ -60,19 +60,19 @@ uv run python -m bot.main
 
 | Command | Description |
 |---------|-------------|
-| `/channelguessr start` | Start a new guessing round |
-| `/channelguessr guess <channel> <time> [author]` | Submit your guess |
-| `/channelguessr skip` | Skip current round (mod only) |
-| `/channelguessr leaderboard` | Show server leaderboard |
-| `/channelguessr stats [user]` | Show player stats |
-| `/channelguessr help` | Show help information |
+| `/start` | Start a new guessing round |
+| `/guess <channel> <time> [author]` | Submit your guess |
+| `/skip` | Skip current round (mod only) |
+| `/leaderboard` | Show server leaderboard |
+| `/stats [user]` | Show player stats |
+| `/help` | Show help information |
 
 ## How to Play
 
-1. Use `/channelguessr start` to begin a round
+1. Use `/start` to begin a round
 2. You'll see a mystery message with context before and after
 3. Usernames are anonymized (User A, User B, etc.)
-4. Use `/channelguessr guess` to submit your channel and time guess
+4. Use `/guess` to submit your channel and time guess
 5. After 60 seconds, the round ends and scores are revealed
 
 ## Scoring

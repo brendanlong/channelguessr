@@ -187,7 +187,7 @@ def _build_game_message(
     lines.extend(
         [
             "---",
-            "**Which channel?** Use `/channelguessr guess`",
+            "**Which channel?** Use `/guess`",
             "**When was this posted?**",
             f"You have {timeout_seconds} seconds!",
         ]
@@ -288,7 +288,7 @@ def format_leaderboard(
     ]
 
     if not players:
-        lines.append("*No players yet! Start a game with `/channelguessr start`*")
+        lines.append("*No players yet! Start a game with `/start`*")
         return "\n".join(lines)
 
     medals = ["🥇", "🥈", "🥉"]

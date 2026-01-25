@@ -102,7 +102,7 @@ class ChannelguessrBot(commands.Bot):
         # Set activity
         activity = discord.Activity(
             type=discord.ActivityType.playing,
-            name="/channelguessr start",
+            name="/start",
         )
         await self.change_presence(activity=activity)
 

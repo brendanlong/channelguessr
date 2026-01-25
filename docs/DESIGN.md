@@ -6,10 +6,10 @@ A Discord bot game where players are shown a random "interesting" message (with 
 
 ## Game Flow
 
-1. A player triggers a new round with `/channelguessr start`
+1. A player triggers a new round with `/start`
 2. The bot selects a random interesting message from the server's indexed pool
 3. The bot posts the message with ~5 messages of context before/after, with channel name and timestamps hidden
-4. Players submit guesses for channel and time period using `/channelguessr guess`
+4. Players submit guesses for channel and time period using `/guess`
 5. After a timeout (60 seconds), the bot reveals the answer and scores players
 
 ## Architecture
@@ -30,7 +30,7 @@ A Discord bot game where players are shown a random "interesting" message (with 
 
 ### Components
 
-- **Bot Commands**: Slash commands for game interaction (`/channelguessr start`, `/channelguessr guess`, etc.)
+- **Bot Commands**: Slash commands for game interaction (`/start`, `/guess`, etc.)
 - **Event Handlers**: Real-time indexing of messages and reactions as they occur
 - **Game Service**: Core game logic for selecting messages, managing rounds, and scoring
 - **Database**: SQLite storage for indexed messages, active rounds, guesses, and leaderboards
@@ -141,7 +141,7 @@ Messages are displayed with anonymized usernames to prevent guessing based on wh
 > **User A:** carry me pls
 
 ───────────────────────────────────────
-❓ **Which channel?** Use `/channelguessr guess`
+❓ **Which channel?** Use `/guess`
 ⏰ **When was this posted?**
 🕐 You have 60 seconds!
 ```
@@ -150,11 +150,11 @@ Messages are displayed with anonymized usernames to prevent guessing based on wh
 
 | Command | Description |
 |---------|-------------|
-| `/channelguessr start` | Start a new round |
-| `/channelguessr guess <channel> <time>` | Submit a guess |
-| `/channelguessr skip` | Skip current round (mod only) |
-| `/channelguessr leaderboard` | Show server leaderboard |
-| `/channelguessr stats [@user]` | Show player stats |
+| `/start` | Start a new round |
+| `/guess <channel> <time>` | Submit a guess |
+| `/skip` | Skip current round (mod only) |
+| `/leaderboard` | Show server leaderboard |
+| `/stats [@user]` | Show player stats |
 
 ## MVP Scope
 
@@ -186,7 +186,7 @@ channelguessr/
 │   ├── main.py              # Bot entry point
 │   ├── commands/
 │   │   ├── __init__.py
-│   │   └── game.py          # /channelguessr commands
+│   │   └── game.py          # /commands
 │   ├── events/
 │   │   ├── __init__.py
 │   │   ├── message.py       # on_message indexing

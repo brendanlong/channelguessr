@@ -1,10 +1,19 @@
 """Message formatting utilities for the game display."""
 
 import discord
+import re
 from typing import Sequence
+
+# URL pattern for detecting links
+URL_PATTERN = re.compile(r"https?://\S+")
 
 # Discord message limit
 DISCORD_MAX_LENGTH = 2000
+
+
+def suppress_url_embeds(text: str) -> str:
+    """Wrap URLs in angle brackets to suppress Discord embeds."""
+    return URL_PATTERN.sub(r"<\g<0>>", text)
 
 
 def anonymize_usernames(
@@ -29,6 +38,9 @@ def format_message_content(
 ) -> str:
     """Format a single message for display."""
     content = message.content or ""
+
+    # Suppress URL embeds by wrapping in angle brackets
+    content = suppress_url_embeds(content)
 
     # Add attachment indicators
     if include_attachments and message.attachments:

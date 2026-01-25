@@ -130,15 +130,15 @@ Messages are displayed with anonymized usernames to prevent guessing based on wh
 ╰──────────────────────────────────────╯
 
 **[Context Before]**
-> **User_A:** anyone here play valorant?
-> **User_B:** yeah I'm down
+> **User A:** anyone here play valorant?
+> **User B:** yeah I'm down
 
 **[MYSTERY MESSAGE]**
-> **User_C:** I just hit immortal for the first time...
+> **User C:** I just hit immortal for the first time...
 
 **[Context After]**
-> **User_B:** LETS GOOO
-> **User_A:** carry me pls
+> **User B:** LETS GOOO
+> **User A:** carry me pls
 
 ───────────────────────────────────────
 ❓ **Which channel?** Use `/channelguessr guess`

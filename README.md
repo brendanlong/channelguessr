@@ -71,7 +71,7 @@ uv run python -m bot.main
 
 1. Use `/channelguessr start` to begin a round
 2. You'll see a mystery message with context before and after
-3. Usernames are anonymized (User_A, User_B, etc.)
+3. Usernames are anonymized (User A, User B, etc.)
 4. Use `/channelguessr guess` to submit your channel and time guess
 5. After 60 seconds, the round ends and scores are revealed
 

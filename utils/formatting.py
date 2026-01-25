@@ -54,14 +54,14 @@ def escape_mentions(text: str, guild: discord.Guild | None) -> str:
 def anonymize_usernames(
     messages: Sequence[discord.Message],
 ) -> dict[int, str]:
-    """Create a mapping of user IDs to anonymized names (User_A, User_B, etc.)."""
+    """Create a mapping of user IDs to anonymized names (User A, User B, etc.)."""
     unique_authors = []
     for msg in messages:
         if msg.author.id not in unique_authors:
             unique_authors.append(msg.author.id)
 
     return {
-        user_id: f"User_{chr(65 + i)}"  # A, B, C, ...
+        user_id: f"User {chr(65 + i)}"  # A, B, C, ...
         for i, user_id in enumerate(unique_authors)
     }
 

@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import Optional, Any
 import logging
 
+from models import GameRound, Guess, PlayerScore, UserDataDeletion
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,9 +119,9 @@ class Database:
 
     async def get_active_round(
         self, guild_id: str, game_channel_id: str
-    ) -> Optional[aiosqlite.Row]:
+    ) -> Optional[GameRound]:
         """Get the active round for a channel."""
-        return await self.fetch_one(
+        row = await self.fetch_one(
             """
             SELECT * FROM game_rounds
             WHERE guild_id = ? AND game_channel_id = ? AND status = 'active'
@@ -128,6 +130,7 @@ class Database:
             """,
             (guild_id, game_channel_id),
         )
+        return GameRound(**dict(row)) if row else None
 
     async def end_round(self, round_id: int, status: str = "completed") -> None:
         """End a game round."""
@@ -189,9 +192,9 @@ class Database:
             logger.error(f"Failed to add guess: {e}")
             return False
 
-    async def get_guesses_for_round(self, round_id: int) -> list[aiosqlite.Row]:
+    async def get_guesses_for_round(self, round_id: int) -> list[Guess]:
         """Get all guesses for a round."""
-        return await self.fetch_all(
+        rows = await self.fetch_all(
             """
             SELECT * FROM guesses
             WHERE round_id = ?
@@ -199,6 +202,7 @@ class Database:
             """,
             (round_id,),
         )
+        return [Guess(**dict(row)) for row in rows]
 
     async def player_has_guessed(self, round_id: int, player_id: str) -> bool:
         """Check if a player has already guessed in a round."""
@@ -244,9 +248,9 @@ class Database:
 
     async def get_leaderboard(
         self, guild_id: str, limit: int = 10
-    ) -> list[aiosqlite.Row]:
+    ) -> list[PlayerScore]:
         """Get the top players for a guild."""
-        return await self.fetch_all(
+        rows = await self.fetch_all(
             """
             SELECT * FROM player_scores
             WHERE guild_id = ?
@@ -255,18 +259,20 @@ class Database:
             """,
             (guild_id, limit),
         )
+        return [PlayerScore(**dict(row)) for row in rows]
 
     async def get_player_stats(
         self, guild_id: str, player_id: str
-    ) -> Optional[aiosqlite.Row]:
+    ) -> Optional[PlayerScore]:
         """Get a player's stats."""
-        return await self.fetch_one(
+        row = await self.fetch_one(
             """
             SELECT * FROM player_scores
             WHERE guild_id = ? AND player_id = ?
             """,
             (guild_id, player_id),
         )
+        return PlayerScore(**dict(row)) if row else None
 
     async def get_player_rank(self, guild_id: str, player_id: str) -> int:
         """Get a player's rank in the leaderboard."""
@@ -314,10 +320,10 @@ class Database:
         )
         logger.info(f"Deleted all data for guild {guild_id}")
 
-    async def delete_user_data(self, user_id: str) -> dict[str, int]:
+    async def delete_user_data(self, user_id: str) -> UserDataDeletion:
         """Delete all data for a user across all servers.
 
-        Returns a dict with counts of deleted records.
+        Returns counts of deleted records.
         """
         # Count records before deletion for reporting
         guesses_count = await self.fetch_value(
@@ -345,7 +351,7 @@ class Database:
             f"{guesses_count} guesses, {scores_count} server score records"
         )
 
-        return {
-            "guesses": guesses_count or 0,
-            "scores": scores_count or 0,
-        }
+        return UserDataDeletion(
+            guesses=guesses_count or 0,
+            scores=scores_count or 0,
+        )

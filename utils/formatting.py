@@ -4,6 +4,8 @@ import discord
 import re
 from typing import Sequence
 
+from models import Guess, PlayerScore
+
 # URL pattern for detecting links
 URL_PATTERN = re.compile(r"https?://\S+")
 
@@ -165,7 +167,7 @@ def format_round_results(
     target_timestamp_ms: int,
     target_message_id: str,
     target_author_id: str,
-    guesses: list[dict],
+    guesses: list[Guess],
     guild: discord.Guild,
 ) -> str:
     """Format the results of a completed round."""
@@ -190,24 +192,24 @@ def format_round_results(
         sorted_guesses = sorted(
             guesses,
             key=lambda g: (
-                g.get("channel_correct", False),
-                g.get("time_score", 0),
-                g.get("author_correct", False),
+                g.channel_correct or False,
+                g.time_score or 0,
+                g.author_correct or False,
             ),
             reverse=True,
         )
 
         for i, guess in enumerate(sorted_guesses, 1):
-            player_id = guess["player_id"]
-            channel_correct = guess.get("channel_correct", False)
-            time_score = guess.get("time_score", 0)
-            author_correct = guess.get("author_correct") or False
+            player_id = guess.player_id
+            channel_correct = guess.channel_correct or False
+            time_score = guess.time_score or 0
+            author_correct = guess.author_correct or False
 
             # Calculate total score (channel 500 + time + author 500)
             total_score = (500 if channel_correct else 0) + time_score + (500 if author_correct else 0)
 
             # Get channel mention for guess
-            guessed_channel_id = guess.get("guessed_channel_id")
+            guessed_channel_id = guess.guessed_channel_id
             if guessed_channel_id:
                 guessed_channel = guild.get_channel(int(guessed_channel_id))
                 channel_text = (
@@ -219,7 +221,7 @@ def format_round_results(
             channel_emoji = "+" if channel_correct else "-"
 
             # Format author guess
-            guessed_author_id = guess.get("guessed_author_id")
+            guessed_author_id = guess.guessed_author_id
             if guessed_author_id:
                 author_emoji = "+" if author_correct else "-"
                 author_text = f", Author: {author_emoji}"
@@ -237,7 +239,7 @@ def format_round_results(
 
 
 def format_leaderboard(
-    players: list[dict],
+    players: list[PlayerScore],
     guild: discord.Guild,
     title: str = "Leaderboard",
 ) -> str:
@@ -255,10 +257,10 @@ def format_leaderboard(
 
     for i, player in enumerate(players):
         medal = medals[i] if i < 3 else f"{i + 1}."
-        player_id = player["player_id"]
-        total_score = player["total_score"]
-        rounds_played = player["rounds_played"]
-        perfect = player["perfect_guesses"]
+        player_id = player.player_id
+        total_score = player.total_score
+        rounds_played = player.rounds_played
+        perfect = player.perfect_guesses
 
         lines.append(
             f"{medal} <@{player_id}> - **{total_score:,}** pts "
@@ -269,7 +271,7 @@ def format_leaderboard(
 
 
 def format_player_stats(
-    stats: dict | None,
+    stats: PlayerScore | None,
     player: discord.Member | discord.User,
     rank: int,
 ) -> str:
@@ -277,9 +279,9 @@ def format_player_stats(
     if not stats:
         return f"**{player.display_name}** hasn't played any games yet!"
 
-    total_score = stats["total_score"]
-    rounds_played = stats["rounds_played"]
-    perfect = stats["perfect_guesses"]
+    total_score = stats.total_score
+    rounds_played = stats.rounds_played
+    perfect = stats.perfect_guesses
     avg_score = total_score / rounds_played if rounds_played > 0 else 0
 
     lines = [

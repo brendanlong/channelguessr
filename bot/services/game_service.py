@@ -161,53 +161,55 @@ class GameService:
         logger.info(f"Ending round {round_id} with status '{status}'")
 
         # Get round info
-        round_info = await self.db.fetch_one(
+        row = await self.db.fetch_one(
             "SELECT * FROM game_rounds WHERE id = ?", (round_id,)
         )
 
-        if not round_info or round_info["status"] != "active":
+        if not row or row["status"] != "active":
             logger.warning(f"Round {round_id} not active or not found, skipping end_round")
             return
+
+        from models import GameRound
+        round_info = GameRound(**dict(row))
 
         # Mark round as ended
         await self.db.end_round(round_id, status)
 
         # Cancel timer if exists (but not if we ARE the timer task)
-        timer_key = f"{round_info['guild_id']}:{round_info['game_channel_id']}"
+        timer_key = f"{round_info.guild_id}:{round_info.game_channel_id}"
         if timer_key in self._active_timers:
             timer_task = self._active_timers.pop(timer_key)
             if timer_task is not asyncio.current_task():
                 timer_task.cancel()
 
         # Get guesses
-        guess_rows = await self.db.get_guesses_for_round(round_id)
-        guesses = [dict(row) for row in guess_rows]
+        guesses = await self.db.get_guesses_for_round(round_id)
         logger.info(f"Round {round_id} received {len(guesses)} guesses")
 
         # Update player scores
         for guess in guesses:
-            author_correct = guess.get("author_correct") or False
+            author_correct = guess.author_correct or False
             total_score = calculate_total_score(
-                guess["channel_correct"], guess["time_score"], author_correct
+                guess.channel_correct, guess.time_score, author_correct
             )
             is_perfect = is_perfect_guess(
-                guess["channel_correct"], guess["time_score"], author_correct
+                guess.channel_correct, guess.time_score, author_correct
             )
 
             await self.db.update_player_score(
                 guild_id=str(guild.id),
-                player_id=guess["player_id"],
+                player_id=guess.player_id,
                 score=total_score,
                 is_perfect=is_perfect,
             )
 
         # Format and send results
-        target_channel = guild.get_channel(int(round_info["target_channel_id"]))
+        target_channel = guild.get_channel(int(round_info.target_channel_id))
         results_text = format_round_results(
             target_channel=target_channel,
-            target_timestamp_ms=round_info["target_timestamp_ms"],
-            target_message_id=round_info["target_message_id"],
-            target_author_id=round_info["target_author_id"],
+            target_timestamp_ms=round_info.target_timestamp_ms,
+            target_message_id=round_info.target_message_id,
+            target_author_id=round_info.target_author_id,
             guesses=guesses,
             guild=guild,
         )
@@ -237,7 +239,7 @@ class GameService:
             return (False, "No active round! Start one with `/channelguessr start`")
 
         # Check if player already guessed
-        if await self.db.player_has_guessed(active_round["id"], str(player.id)):
+        if await self.db.player_has_guessed(active_round.id, str(player.id)):
             return (False, "You've already submitted a guess for this round!")
 
         # Parse time guess
@@ -250,22 +252,22 @@ class GameService:
             )
 
         # Calculate scores
-        channel_correct = str(guessed_channel.id) == active_round["target_channel_id"]
+        channel_correct = str(guessed_channel.id) == active_round.target_channel_id
         time_score = calculate_time_score(
-            guessed_timestamp_ms, active_round["target_timestamp_ms"]
+            guessed_timestamp_ms, active_round.target_timestamp_ms
         )
 
         # Calculate author score
         guessed_author_id = str(guessed_author.id) if guessed_author else None
         author_correct = (
-            guessed_author_id == active_round["target_author_id"]
+            guessed_author_id == active_round.target_author_id
             if guessed_author_id
             else False
         )
 
         # Save guess
         await self.db.add_guess(
-            round_id=active_round["id"],
+            round_id=active_round.id,
             player_id=str(player.id),
             guessed_channel_id=str(guessed_channel.id),
             guessed_timestamp_ms=guessed_timestamp_ms,
@@ -396,5 +398,5 @@ class GameService:
         if not active_round:
             return (False, "No active round to skip!")
 
-        await self.end_round(active_round["id"], guild, channel, status="cancelled")
+        await self.end_round(active_round.id, guild, channel, status="cancelled")
         return (True, "Round skipped!")

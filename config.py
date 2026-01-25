@@ -1,44 +1,64 @@
-import os
-from dotenv import load_dotenv
+"""Application configuration using pydantic-settings."""
 
-load_dotenv()
-
-
-def _get_int(key: str, default: int) -> int:
-    """Get an integer from environment, falling back to default."""
-    value = os.environ.get(key)
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        return default
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Config:
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     # Discord
-    DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
+    discord_token: str = Field(default="", alias="DISCORD_TOKEN")
 
     # Database
-    DATABASE_PATH = os.environ.get("DATABASE_PATH", "channelguessr.db")
+    database_path: str = Field(default="channelguessr.db", alias="DATABASE_PATH")
 
     # Logging
-    LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     # Game settings
-    ROUND_TIMEOUT_SECONDS = _get_int("ROUND_TIMEOUT_SECONDS", 60)
-    CONTEXT_MESSAGES = _get_int("CONTEXT_MESSAGES", 5)
-    MIN_MESSAGE_AGE_HOURS = _get_int("MIN_MESSAGE_AGE_HOURS", 24)
+    round_timeout_seconds: int = Field(default=60, alias="ROUND_TIMEOUT_SECONDS")
+    context_messages: int = Field(default=5, alias="CONTEXT_MESSAGES")
+    min_message_age_hours: int = Field(default=24, alias="MIN_MESSAGE_AGE_HOURS")
 
     # Message search settings
-    MESSAGE_SEARCH_LIMIT = _get_int("MESSAGE_SEARCH_LIMIT", 100)
-    MAX_SEARCH_RETRIES = _get_int("MAX_SEARCH_RETRIES", 5)
-    LOOKBACK_DAYS = _get_int("LOOKBACK_DAYS", 365)
+    message_search_limit: int = Field(default=100, alias="MESSAGE_SEARCH_LIMIT")
+    max_search_retries: int = Field(default=5, alias="MAX_SEARCH_RETRIES")
+    lookback_days: int = Field(default=365, alias="LOOKBACK_DAYS")
 
     # Message filtering
-    MIN_MESSAGE_LENGTH = _get_int("MIN_MESSAGE_LENGTH", 200)
+    min_message_length: int = Field(default=200, alias="MIN_MESSAGE_LENGTH")
 
     # Scoring
-    CHANNEL_SCORE = _get_int("CHANNEL_SCORE", 500)
-    TIME_MAX_SCORE = _get_int("TIME_MAX_SCORE", 500)
-    AUTHOR_SCORE = _get_int("AUTHOR_SCORE", 500)
+    channel_score: int = Field(default=500, alias="CHANNEL_SCORE")
+    time_max_score: int = Field(default=500, alias="TIME_MAX_SCORE")
+    author_score: int = Field(default=500, alias="AUTHOR_SCORE")
+
+
+# Global settings instance
+settings = Settings()
+
+
+# Backwards compatibility - expose as Config class with uppercase attributes
+class Config:
+    """Backwards-compatible config interface."""
+
+    DISCORD_TOKEN = settings.discord_token
+    DATABASE_PATH = settings.database_path
+    LOG_LEVEL = settings.log_level.upper()
+    ROUND_TIMEOUT_SECONDS = settings.round_timeout_seconds
+    CONTEXT_MESSAGES = settings.context_messages
+    MIN_MESSAGE_AGE_HOURS = settings.min_message_age_hours
+    MESSAGE_SEARCH_LIMIT = settings.message_search_limit
+    MAX_SEARCH_RETRIES = settings.max_search_retries
+    LOOKBACK_DAYS = settings.lookback_days
+    MIN_MESSAGE_LENGTH = settings.min_message_length
+    CHANNEL_SCORE = settings.channel_score
+    TIME_MAX_SCORE = settings.time_max_score
+    AUTHOR_SCORE = settings.author_score

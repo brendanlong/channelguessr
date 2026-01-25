@@ -37,8 +37,8 @@ class ClearDataConfirmView(ui.View):
         await interaction.response.edit_message(
             content=(
                 f"Your data has been deleted:\n"
-                f"- {result['guesses']} guess(es) removed\n"
-                f"- {result['scores']} leaderboard entry/entries removed\n\n"
+                f"- {result.guesses} guess(es) removed\n"
+                f"- {result.scores} leaderboard entry/entries removed\n\n"
                 f"This affects all servers where you played Channelguessr."
             ),
             view=None,
@@ -146,10 +146,9 @@ class GameCommands(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         players = await self.bot.db.get_leaderboard(str(interaction.guild.id))
-        players_list = [dict(row) for row in players]
 
         message = format_leaderboard(
-            players=players_list,
+            players=players,
             guild=interaction.guild,
             title="Leaderboard",
         )
@@ -173,8 +172,7 @@ class GameCommands(commands.Cog):
         stats = await self.bot.db.get_player_stats(guild_id, player_id)
         rank = await self.bot.db.get_player_rank(guild_id, player_id)
 
-        stats_dict = dict(stats) if stats else None
-        message = format_player_stats(stats_dict, target_user, rank)
+        message = format_player_stats(stats, target_user, rank)
 
         await interaction.followup.send(message, ephemeral=True)
 

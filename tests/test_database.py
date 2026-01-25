@@ -54,9 +54,9 @@ class TestGameRounds:
         # Get active round
         active = await db.get_active_round("123", "456")
         assert active is not None
-        assert active["id"] == round_id
-        assert active["status"] == "active"
-        assert active["target_author_id"] == "author123"
+        assert active.id == round_id
+        assert active.status == "active"
+        assert active.target_author_id == "author123"
 
     @pytest.mark.asyncio
     async def test_no_active_round_returns_none(self, db):
@@ -216,9 +216,9 @@ class TestPlayerScores:
         )
 
         stats = await db.get_player_stats("123", "player1")
-        assert stats["total_score"] == 750
-        assert stats["rounds_played"] == 1
-        assert stats["perfect_guesses"] == 0
+        assert stats.total_score == 750
+        assert stats.rounds_played == 1
+        assert stats.perfect_guesses == 0
 
     @pytest.mark.asyncio
     async def test_update_player_score_existing_player(self, db):
@@ -226,9 +226,9 @@ class TestPlayerScores:
         await db.update_player_score("123", "player1", 750, True)
 
         stats = await db.get_player_stats("123", "player1")
-        assert stats["total_score"] == 1250
-        assert stats["rounds_played"] == 2
-        assert stats["perfect_guesses"] == 1
+        assert stats.total_score == 1250
+        assert stats.rounds_played == 2
+        assert stats.perfect_guesses == 1
 
     @pytest.mark.asyncio
     async def test_get_leaderboard(self, db):
@@ -239,9 +239,9 @@ class TestPlayerScores:
         leaderboard = await db.get_leaderboard("123", limit=10)
         assert len(leaderboard) == 3
         # Should be sorted by score descending
-        assert leaderboard[0]["player_id"] == "player2"
-        assert leaderboard[1]["player_id"] == "player3"
-        assert leaderboard[2]["player_id"] == "player1"
+        assert leaderboard[0].player_id == "player2"
+        assert leaderboard[1].player_id == "player3"
+        assert leaderboard[2].player_id == "player1"
 
     @pytest.mark.asyncio
     async def test_get_player_rank(self, db):
@@ -328,8 +328,8 @@ class TestUserDataDeletion:
         result = await db.delete_user_data("user_to_delete")
 
         # Verify counts returned
-        assert result["guesses"] == 2
-        assert result["scores"] == 2
+        assert result.guesses == 2
+        assert result.scores == 2
 
         # Verify data is gone
         guesses = await db.fetch_all(
@@ -355,5 +355,5 @@ class TestUserDataDeletion:
     async def test_delete_user_data_with_no_data(self, db):
         """Test that delete_user_data works for users with no data."""
         result = await db.delete_user_data("nonexistent_user")
-        assert result["guesses"] == 0
-        assert result["scores"] == 0
+        assert result.guesses == 0
+        assert result.scores == 0

@@ -124,7 +124,7 @@ def _build_game_message(
     lines = [
         "```",
         "╭──────────────────────────────────────╮",
-        f"│  CHANNELGUESSR - ROUND #{round_number:<12}│",
+        f"│  CHANNELGUESSR - ROUND #{round_number:<13}│",
         "╰──────────────────────────────────────╯",
         "```",
         "",
@@ -180,7 +180,7 @@ def format_round_results(
     lines = [
         "```",
         "╭──────────────────────────────────────╮",
-        "│        ROUND COMPLETE!              │",
+        "│        ROUND COMPLETE!               │",
         "╰──────────────────────────────────────╯",
         "```",
         "",

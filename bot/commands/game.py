@@ -106,7 +106,7 @@ class GameCommands(commands.Cog):
     )
     async def leaderboard(self, interaction: discord.Interaction):
         """Show the server leaderboard."""
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
         players = await self.bot.db.get_leaderboard(str(interaction.guild.id))
         players_list = [dict(row) for row in players]
@@ -117,7 +117,7 @@ class GameCommands(commands.Cog):
             title="Leaderboard",
         )
 
-        await interaction.followup.send(message)
+        await interaction.followup.send(message, ephemeral=True)
 
     @channelguessr_group.command(name="stats", description="Show player stats")
     @app_commands.describe(user="The user to show stats for (defaults to yourself)")
@@ -127,7 +127,7 @@ class GameCommands(commands.Cog):
         user: discord.Member = None,
     ):
         """Show player stats."""
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
         target_user = user or interaction.user
         guild_id = str(interaction.guild.id)
@@ -139,7 +139,7 @@ class GameCommands(commands.Cog):
         stats_dict = dict(stats) if stats else None
         message = format_player_stats(stats_dict, target_user, rank)
 
-        await interaction.followup.send(message)
+        await interaction.followup.send(message, ephemeral=True)
 
     @channelguessr_group.command(name="help", description="Show help for the game")
     async def help(self, interaction: discord.Interaction):

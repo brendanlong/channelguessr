@@ -258,3 +258,102 @@ class TestPlayerScores:
         # Player with no scores should get rank 1
         rank = await db.get_player_rank("123", "nonexistent")
         assert rank == 1
+
+
+class TestUserDataDeletion:
+    @pytest.mark.asyncio
+    async def test_delete_user_data_removes_guesses_and_scores(self, db):
+        """Test that delete_user_data removes all user data across servers."""
+        # Create rounds in two different guilds
+        round1_id = await db.create_round(
+            guild_id="guild1",
+            game_channel_id="chan1",
+            target_message_id="msg1",
+            target_channel_id="target1",
+            target_timestamp_ms=1609459200000,
+            target_author_id="someone_else",
+        )
+        round2_id = await db.create_round(
+            guild_id="guild2",
+            game_channel_id="chan2",
+            target_message_id="msg2",
+            target_channel_id="target2",
+            target_timestamp_ms=1609459200000,
+            target_author_id="someone_else",
+        )
+
+        # User participates in both guilds
+        await db.add_guess(
+            round_id=round1_id,
+            player_id="user_to_delete",
+            guessed_channel_id="target1",
+            guessed_timestamp_ms=1609459200000,
+            channel_correct=True,
+            time_score=500,
+        )
+        await db.add_guess(
+            round_id=round2_id,
+            player_id="user_to_delete",
+            guessed_channel_id="target2",
+            guessed_timestamp_ms=1609459200000,
+            channel_correct=True,
+            time_score=400,
+        )
+        # Another user also participates
+        await db.add_guess(
+            round_id=round1_id,
+            player_id="other_user",
+            guessed_channel_id="target1",
+            guessed_timestamp_ms=1609459200000,
+            channel_correct=True,
+            time_score=300,
+        )
+
+        # Update scores
+        await db.update_player_score("guild1", "user_to_delete", 500, False)
+        await db.update_player_score("guild2", "user_to_delete", 400, False)
+        await db.update_player_score("guild1", "other_user", 300, False)
+
+        # Verify data exists before deletion
+        guesses = await db.fetch_all(
+            "SELECT * FROM guesses WHERE player_id = ?", ("user_to_delete",)
+        )
+        assert len(guesses) == 2
+        scores = await db.fetch_all(
+            "SELECT * FROM player_scores WHERE player_id = ?", ("user_to_delete",)
+        )
+        assert len(scores) == 2
+
+        # Delete user data
+        result = await db.delete_user_data("user_to_delete")
+
+        # Verify counts returned
+        assert result["guesses"] == 2
+        assert result["scores"] == 2
+
+        # Verify data is gone
+        guesses = await db.fetch_all(
+            "SELECT * FROM guesses WHERE player_id = ?", ("user_to_delete",)
+        )
+        assert len(guesses) == 0
+        scores = await db.fetch_all(
+            "SELECT * FROM player_scores WHERE player_id = ?", ("user_to_delete",)
+        )
+        assert len(scores) == 0
+
+        # Verify other user's data is still there
+        other_guesses = await db.fetch_all(
+            "SELECT * FROM guesses WHERE player_id = ?", ("other_user",)
+        )
+        assert len(other_guesses) == 1
+        other_scores = await db.fetch_all(
+            "SELECT * FROM player_scores WHERE player_id = ?", ("other_user",)
+        )
+        assert len(other_scores) == 1
+
+    @pytest.mark.asyncio
+    async def test_delete_user_data_with_no_data(self, db):
+        """Test that delete_user_data works for users with no data."""
+        result = await db.delete_user_data("nonexistent_user")
+        assert result["guesses"] == 0
+        assert result["scores"] == 0

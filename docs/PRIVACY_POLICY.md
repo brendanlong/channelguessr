@@ -43,6 +43,8 @@ Game data is retained while the bot is in your server.
 
 ## Data Deletion
 
+**Self-service:** Use the `/cleardata` command to delete all your personal data from all servers. This removes your guesses and leaderboard scores permanently.
+
 **Automatic deletion:** When the bot is removed from a server, all data for that server is automatically and permanently deleted. This includes all game rounds, player guesses, and leaderboard scores.
 
 **Manual requests:** Server administrators can also request data deletion at any time by opening an issue on the [GitHub repository](https://github.com/brendanlong/channelguessr).

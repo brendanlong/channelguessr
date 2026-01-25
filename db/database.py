@@ -313,3 +313,39 @@ class Database:
             (guild_id,),
         )
         logger.info(f"Deleted all data for guild {guild_id}")
+
+    async def delete_user_data(self, user_id: str) -> dict[str, int]:
+        """Delete all data for a user across all servers.
+
+        Returns a dict with counts of deleted records.
+        """
+        # Count records before deletion for reporting
+        guesses_count = await self.fetch_value(
+            "SELECT COUNT(*) FROM guesses WHERE player_id = ?",
+            (user_id,),
+        )
+        scores_count = await self.fetch_value(
+            "SELECT COUNT(*) FROM player_scores WHERE player_id = ?",
+            (user_id,),
+        )
+
+        # Delete user's guesses
+        await self.execute(
+            "DELETE FROM guesses WHERE player_id = ?",
+            (user_id,),
+        )
+        # Delete user's scores
+        await self.execute(
+            "DELETE FROM player_scores WHERE player_id = ?",
+            (user_id,),
+        )
+
+        logger.info(
+            f"Deleted all data for user {user_id}: "
+            f"{guesses_count} guesses, {scores_count} server score records"
+        )
+
+        return {
+            "guesses": guesses_count or 0,
+            "scores": scores_count or 0,
+        }

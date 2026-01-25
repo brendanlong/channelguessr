@@ -3,11 +3,59 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+from discord import ui
 import logging
 
 from utils.formatting import format_leaderboard, format_player_stats
 
 logger = logging.getLogger(__name__)
+
+
+class ClearDataConfirmView(ui.View):
+    """Confirmation view for clearing user data."""
+
+    def __init__(self, user_id: int, db):
+        super().__init__(timeout=60)
+        self.user_id = user_id
+        self.db = db
+        self.confirmed = False
+
+    @ui.button(label="Yes, delete my data", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This confirmation is not for you.", ephemeral=True
+            )
+            return
+
+        self.confirmed = True
+        self.stop()
+
+        # Delete the data
+        result = await self.db.delete_user_data(str(self.user_id))
+
+        await interaction.response.edit_message(
+            content=(
+                f"Your data has been deleted:\n"
+                f"- {result['guesses']} guess(es) removed\n"
+                f"- {result['scores']} leaderboard entry/entries removed\n\n"
+                f"This affects all servers where you played Channelguessr."
+            ),
+            view=None,
+        )
+
+    @ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: ui.Button):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "This confirmation is not for you.", ephemeral=True
+            )
+            return
+
+        self.stop()
+        await interaction.response.edit_message(
+            content="Data deletion cancelled.", view=None
+        )
 
 
 class GameCommands(commands.Cog):
@@ -155,8 +203,38 @@ A game where you guess which channel a message came from, when it was posted, an
 - `/skip` - Skip the current round (mods only)
 - `/leaderboard` - View the leaderboard
 - `/stats [user]` - View player stats
+- `/cleardata` - Delete your data from all servers
 """
         await interaction.response.send_message(help_text, ephemeral=True)
+
+    @app_commands.command(
+        name="cleardata", description="Delete all your Channelguessr data from all servers"
+    )
+    async def cleardata(self, interaction: discord.Interaction):
+        """Delete all user data with confirmation."""
+        logger.info(f"Cleardata command invoked by {interaction.user}")
+
+        view = ClearDataConfirmView(interaction.user.id, self.bot.db)
+
+        await interaction.response.send_message(
+            "**Are you sure you want to delete all your Channelguessr data?**\n\n"
+            "This will permanently delete:\n"
+            "- All your guesses from past rounds\n"
+            "- Your leaderboard scores on all servers\n\n"
+            "This action cannot be undone.",
+            view=view,
+            ephemeral=True,
+        )
+
+        # Handle timeout
+        await view.wait()
+        if not view.confirmed and not interaction.is_expired():
+            try:
+                await interaction.edit_original_response(
+                    content="Data deletion timed out.", view=None
+                )
+            except discord.NotFound:
+                pass  # Message was already deleted
 
 
 async def setup(bot: commands.Bot):

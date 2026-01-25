@@ -122,31 +122,27 @@ def _build_game_message(
     user_map = anonymize_usernames(all_messages)
 
     lines = [
-        "```",
-        "╭──────────────────────────────────────╮",
-        f"│  CHANNELGUESSR - ROUND #{round_number:<13}│",
-        "╰──────────────────────────────────────╯",
-        "```",
+        f"# CHANNELGUESSR — Round {round_number}",
         "",
     ]
 
     # Context before
     if before_messages:
-        lines.append("**[Context Before]**")
+        lines.append("**Context Before**")
         for msg in before_messages:
             anon_name = user_map[msg.author.id]
             lines.append(format_message_content(msg, anon_name))
         lines.append("")
 
     # Target message (highlighted)
-    lines.append("**[MYSTERY MESSAGE]**")
+    lines.append("🎯 **Mystery Message**")
     anon_name = user_map[target_message.author.id]
     lines.append(format_message_content(target_message, anon_name))
     lines.append("")
 
     # Context after
     if after_messages:
-        lines.append("**[Context After]**")
+        lines.append("**Context After**")
         for msg in after_messages:
             anon_name = user_map[msg.author.id]
             lines.append(format_message_content(msg, anon_name))
@@ -154,7 +150,7 @@ def _build_game_message(
 
     lines.extend(
         [
-            "───────────────────────────────────────",
+            "---",
             "**Which channel?** Use `/channelguessr guess`",
             "**When was this posted?**",
             f"You have {timeout_seconds} seconds!",
@@ -178,13 +174,9 @@ def format_round_results(
     message_link = f"https://discord.com/channels/{guild.id}/{target_channel.id}/{target_message_id}"
 
     lines = [
-        "```",
-        "╭──────────────────────────────────────╮",
-        "│        ROUND COMPLETE!               │",
-        "╰──────────────────────────────────────╯",
-        "```",
+        "# Round Complete!",
         "",
-        f"**Channel:** {target_channel.mention}",
+        f"📍 **Channel:** {target_channel.mention}",
         f"**Posted:** {format_timestamp(target_timestamp_ms, 'f')} ({format_timestamp(target_timestamp_ms, 'R')})",
         f"**Author:** <@{target_author_id}>",
         f"**Message:** [Jump to message]({message_link})",
@@ -251,11 +243,7 @@ def format_leaderboard(
 ) -> str:
     """Format the leaderboard display."""
     lines = [
-        "```",
-        "╭──────────────────────────────────────╮",
-        f"│  {title:^36}│",
-        "╰──────────────────────────────────────╯",
-        "```",
+        f"# 🏆 {title}",
         "",
     ]
 
@@ -263,7 +251,7 @@ def format_leaderboard(
         lines.append("*No players yet! Start a game with `/channelguessr start`*")
         return "\n".join(lines)
 
-    medals = ["", "", ""]
+    medals = ["🥇", "🥈", "🥉"]
 
     for i, player in enumerate(players):
         medal = medals[i] if i < 3 else f"{i + 1}."
@@ -295,7 +283,7 @@ def format_player_stats(
     avg_score = total_score / rounds_played if rounds_played > 0 else 0
 
     lines = [
-        f"**Stats for {player.display_name}**",
+        f"## 📊 Stats for {player.display_name}",
         "",
         f"**Rank:** #{rank}",
         f"**Total Score:** {total_score:,} pts",

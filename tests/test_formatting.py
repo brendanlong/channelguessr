@@ -49,7 +49,7 @@ class TestFormatGameMessage:
 
         assert len(result) <= DISCORD_MAX_LENGTH
         assert "Solo message" in result
-        assert "ROUND #42" in result
+        assert "Round 42" in result
 
     def test_very_long_target_message(self, mock_discord_message):
         """Even with very long target, result should fit limit."""

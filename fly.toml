@@ -1,0 +1,21 @@
+# fly.toml app configuration file generated for channelguessr on 2026-01-24T20:26:11-08:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'channelguessr'
+primary_region = 'lax'
+
+[build]
+
+[env]
+  DATABASE_PATH = '/data/channelguessr.db'
+
+[[mounts]]
+  source = 'channelguessr_data'
+  destination = '/data'
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

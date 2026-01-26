@@ -64,21 +64,18 @@ class GameService:
 
                 remaining_seconds = (expires_at - now).total_seconds()
 
+                # Schedule timer for remaining time (or 0 if already expired)
+                delay = max(0, remaining_seconds)
                 if remaining_seconds <= 0:
-                    # Timer already expired, end the round immediately
-                    logger.info(f"Round {round_info.id} timer already expired, ending now")
-                    try:
-                        await self.end_round(round_info.id, guild, channel)
-                    except Exception:
-                        logger.exception(f"Error ending expired round {round_info.id}")
+                    logger.info(f"Round {round_info.id} timer already expired, scheduling immediate end")
                 else:
-                    # Schedule timer for remaining time
                     logger.info(f"Restoring timer for round {round_info.id} with {remaining_seconds:.1f}s remaining")
-                    timer_key = f"{round_info.guild_id}:{round_info.game_channel_id}"
-                    self._active_timers[timer_key] = asyncio.create_task(
-                        self._round_timeout_with_delay(round_info.id, guild, channel, remaining_seconds)
-                    )
-                    restored_count += 1
+
+                timer_key = f"{round_info.guild_id}:{round_info.game_channel_id}"
+                self._active_timers[timer_key] = asyncio.create_task(
+                    self._round_timeout_with_delay(round_info.id, guild, channel, delay)
+                )
+                restored_count += 1
             else:
                 # No timer expiration set, end the round as we can't restore it
                 logger.warning(f"Round {round_info.id} has no timer_expires_at, ending round")

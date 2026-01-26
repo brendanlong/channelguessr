@@ -51,7 +51,9 @@ class GameService:
 
             channel = guild.get_channel(int(round_info.game_channel_id))
             if not channel or not isinstance(channel, discord.TextChannel):
-                logger.warning(f"Channel {round_info.game_channel_id} not found for round {round_info.id}, ending round")
+                logger.warning(
+                    f"Channel {round_info.game_channel_id} not found for round {round_info.id}, ending round"
+                )
                 await self.db.end_round(round_info.id, status="cancelled")
                 continue
 

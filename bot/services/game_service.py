@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 
 import discord
 from discord.ext import commands
@@ -14,6 +15,7 @@ from bot.services.scoring_service import (
 )
 from config import Config
 from db.database import Database
+from models import GameRound
 from utils.formatting import (
     format_game_message,
     format_round_results,
@@ -31,6 +33,69 @@ class GameService:
         self.db = db
         self.message_selector = MessageSelector()
         self._active_timers: dict[str, asyncio.Task] = {}
+
+    async def restore_timers(self) -> int:
+        """Restore timers for all active rounds on startup.
+
+        Returns the number of timers restored.
+        """
+        active_rounds = await self.db.get_all_active_rounds()
+        restored_count = 0
+
+        for round_info in active_rounds:
+            guild = self.bot.get_guild(int(round_info.guild_id))
+            if not guild:
+                logger.warning(f"Guild {round_info.guild_id} not found for round {round_info.id}, ending round")
+                await self.db.end_round(round_info.id, status="cancelled")
+                continue
+
+            channel = guild.get_channel(int(round_info.game_channel_id))
+            if not channel or not isinstance(channel, discord.TextChannel):
+                logger.warning(f"Channel {round_info.game_channel_id} not found for round {round_info.id}, ending round")
+                await self.db.end_round(round_info.id, status="cancelled")
+                continue
+
+            # Calculate remaining time
+            if round_info.timer_expires_at:
+                now = datetime.now(timezone.utc)
+                expires_at = round_info.timer_expires_at
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+                remaining_seconds = (expires_at - now).total_seconds()
+
+                if remaining_seconds <= 0:
+                    # Timer already expired, end the round immediately
+                    logger.info(f"Round {round_info.id} timer already expired, ending now")
+                    try:
+                        await self.end_round(round_info.id, guild, channel)
+                    except Exception:
+                        logger.exception(f"Error ending expired round {round_info.id}")
+                else:
+                    # Schedule timer for remaining time
+                    logger.info(f"Restoring timer for round {round_info.id} with {remaining_seconds:.1f}s remaining")
+                    timer_key = f"{round_info.guild_id}:{round_info.game_channel_id}"
+                    self._active_timers[timer_key] = asyncio.create_task(
+                        self._round_timeout_with_delay(round_info.id, guild, channel, remaining_seconds)
+                    )
+                    restored_count += 1
+            else:
+                # No timer expiration set, end the round as we can't restore it
+                logger.warning(f"Round {round_info.id} has no timer_expires_at, ending round")
+                await self.db.end_round(round_info.id, status="cancelled")
+
+        return restored_count
+
+    async def _round_timeout_with_delay(
+        self, round_id: int, guild: discord.Guild, channel: discord.TextChannel, delay: float
+    ):
+        """Handle round timeout with a specific delay (used for restored timers)."""
+        await asyncio.sleep(delay)
+
+        try:
+            await self.end_round(round_id, guild, channel)
+        except Exception:
+            logger.exception(f"Error ending round {round_id} after timeout")
 
     async def start_round(
         self,
@@ -79,6 +144,11 @@ class GameService:
         round_number = await self.db.get_round_number(guild_id) + 1
         target_timestamp_ms = snowflake_to_timestamp_ms(target_message.id)
         target_author_id = str(target_message.author.id)
+
+        # Calculate timer expiration time
+        timer_expires_at = datetime.now(timezone.utc).timestamp() + timeout
+        timer_expires_at_str = datetime.fromtimestamp(timer_expires_at, timezone.utc).isoformat()
+
         round_id = await self.db.create_round(
             guild_id=guild_id,
             game_channel_id=channel_id,
@@ -86,6 +156,7 @@ class GameService:
             target_channel_id=str(target_channel.id),
             target_timestamp_ms=target_timestamp_ms,
             target_author_id=target_author_id,
+            timer_expires_at=timer_expires_at_str,
         )
         logger.info(f"Created round {round_id} (round #{round_number})")
 
@@ -138,13 +209,7 @@ class GameService:
 
     async def _round_timeout(self, round_id: int, guild: discord.Guild, channel: discord.TextChannel, timeout: int):
         """Handle round timeout."""
-        await asyncio.sleep(timeout)
-
-        # End the round
-        try:
-            await self.end_round(round_id, guild, channel)
-        except Exception:
-            logger.exception(f"Error ending round {round_id} after timeout")
+        await self._round_timeout_with_delay(round_id, guild, channel, timeout)
 
     async def end_round(
         self,
@@ -162,8 +227,6 @@ class GameService:
         if not row or row["status"] != "active":
             logger.warning(f"Round {round_id} not active or not found, skipping end_round")
             return
-
-        from models import GameRound
 
         round_info = GameRound(**dict(row))
 
@@ -398,3 +461,19 @@ class GameService:
 
         await self.end_round(active_round.id, guild, channel, status="cancelled")
         return (True, "Round skipped!")
+
+    def cancel_guild_timers(self, guild_id: str) -> int:
+        """Cancel all active timers for a guild.
+
+        Returns the number of timers cancelled.
+        """
+        cancelled_count = 0
+        keys_to_remove = [key for key in self._active_timers if key.startswith(f"{guild_id}:")]
+
+        for key in keys_to_remove:
+            timer_task = self._active_timers.pop(key)
+            timer_task.cancel()
+            cancelled_count += 1
+            logger.info(f"Cancelled timer for {key}")
+
+        return cancelled_count

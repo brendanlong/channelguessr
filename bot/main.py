@@ -77,6 +77,9 @@ class ChannelguessrBot(commands.Bot):
         # Clean up data for guilds the bot is no longer in
         await self._cleanup_orphaned_guild_data()
 
+        # Restore timers for active rounds
+        await self._restore_game_timers()
+
     async def _cleanup_orphaned_guild_data(self):
         """Delete data for guilds the bot is no longer a member of."""
         if not self.db:
@@ -93,9 +96,26 @@ class ChannelguessrBot(commands.Bot):
         if orphaned_guild_ids:
             logger.info(f"Cleaned up data for {len(orphaned_guild_ids)} orphaned guild(s)")
 
+    async def _restore_game_timers(self):
+        """Restore timers for active game rounds after bot restart."""
+        if not self.game_service:
+            return
+
+        try:
+            restored_count = await self.game_service.restore_timers()
+            if restored_count > 0:
+                logger.info(f"Restored {restored_count} game timer(s)")
+        except Exception:
+            logger.exception("Error restoring game timers")
+
     async def on_guild_remove(self, guild: discord.Guild):
         """Called when the bot is removed from a guild. Deletes all guild data."""
         logger.info(f"Removed from guild: {guild.name} (ID: {guild.id})")
+
+        # Cancel any active timers for this guild
+        if self.game_service:
+            self.game_service.cancel_guild_timers(str(guild.id))
+
         if self.db:
             await self.db.delete_guild_data(str(guild.id))
 

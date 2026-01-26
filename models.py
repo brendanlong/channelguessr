@@ -18,6 +18,7 @@ class GameRound(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     status: str = "active"
+    timer_expires_at: datetime | None = None
 
 
 class Guess(BaseModel):

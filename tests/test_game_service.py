@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 import pytest_asyncio
 
@@ -101,6 +102,7 @@ class TestRestoreTimers:
 
         mock_bot.get_guild.return_value = mock_guild
         mock_guild.get_channel = MagicMock(return_value=None)
+        mock_guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "Not found"))
         service = GameService(mock_bot, db)
 
         restored = await service.restore_timers()
@@ -109,6 +111,35 @@ class TestRestoreTimers:
         # Round should be cancelled
         active = await db.get_active_round("123", "456")
         assert active is None
+
+    @pytest.mark.asyncio
+    async def test_restore_timers_channel_fetched_via_api(self, db, mock_bot, mock_guild, mock_channel):
+        """Test that channels are fetched via API when not in cache."""
+        future_time = datetime.now(timezone.utc) + timedelta(minutes=5)
+        await db.create_round(
+            guild_id="123",
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author123",
+            timer_expires_at=future_time.isoformat(),
+        )
+
+        mock_bot.get_guild.return_value = mock_guild
+        # Cache miss
+        mock_guild.get_channel = MagicMock(return_value=None)
+        # API hit
+        mock_guild.fetch_channel = AsyncMock(return_value=mock_channel)
+        service = GameService(mock_bot, db)
+
+        restored = await service.restore_timers()
+
+        assert restored == 1
+        assert "123:456" in service._active_timers
+        mock_guild.fetch_channel.assert_called_once_with(456)
+        # Clean up
+        service._active_timers["123:456"].cancel()
 
     @pytest.mark.asyncio
     async def test_restore_timers_no_timer_expires_at(self, db, mock_bot, mock_guild, mock_channel):

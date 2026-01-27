@@ -34,6 +34,25 @@ class GameService:
         self.message_selector = MessageSelector()
         self._active_timers: dict[str, asyncio.Task] = {}
 
+    async def _get_or_fetch_text_channel(self, guild: discord.Guild, channel_id: int) -> discord.TextChannel | None:
+        """Get a text channel from cache, falling back to API fetch.
+
+        The guild channel cache may not be populated when on_ready fires,
+        so we fall back to an API call if the cache misses.
+        """
+        channel = guild.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await guild.fetch_channel(channel_id)
+            except (discord.NotFound, discord.Forbidden):
+                return None
+            except discord.HTTPException:
+                logger.warning(f"Failed to fetch channel {channel_id}")
+                return None
+        if not isinstance(channel, discord.TextChannel):
+            return None
+        return channel
+
     async def restore_timers(self) -> int:
         """Restore timers for all active rounds on startup.
 
@@ -49,8 +68,8 @@ class GameService:
                 await self.db.end_round(round_info.id, status="cancelled")
                 continue
 
-            channel = guild.get_channel(int(round_info.game_channel_id))
-            if not channel or not isinstance(channel, discord.TextChannel):
+            channel = await self._get_or_fetch_text_channel(guild, int(round_info.game_channel_id))
+            if not channel:
                 logger.warning(
                     f"Channel {round_info.game_channel_id} not found for round {round_info.id}, ending round"
                 )
@@ -259,7 +278,7 @@ class GameService:
             )
 
         # Format and send results
-        target_channel = guild.get_channel(int(round_info.target_channel_id))
+        target_channel = await self._get_or_fetch_text_channel(guild, int(round_info.target_channel_id))
 
         # Look up author display name (try cache first, then API)
         target_author_display_name: str | None = None

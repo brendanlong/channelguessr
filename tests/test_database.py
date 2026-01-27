@@ -345,3 +345,125 @@ class TestUserDataDeletion:
         result = await db.delete_user_data("nonexistent_user")
         assert result.guesses == 0
         assert result.scores == 0
+
+
+class TestTimerPersistence:
+    @pytest.mark.asyncio
+    async def test_create_round_with_timer_expires_at(self, db):
+        """Test that create_round stores timer_expires_at."""
+        timer_expires = "2024-06-15T12:00:00+00:00"
+        await db.create_round(
+            guild_id="123",
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author123",
+            timer_expires_at=timer_expires,
+        )
+
+        active = await db.get_active_round("123", "456")
+        assert active is not None
+        assert active.timer_expires_at is not None
+        assert active.timer_expires_at.year == 2024
+        assert active.timer_expires_at.month == 6
+        assert active.timer_expires_at.day == 15
+
+    @pytest.mark.asyncio
+    async def test_create_round_without_timer_expires_at(self, db):
+        """Test that create_round works without timer_expires_at."""
+        await db.create_round(
+            guild_id="123",
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author123",
+        )
+
+        active = await db.get_active_round("123", "456")
+        assert active is not None
+        assert active.timer_expires_at is None
+
+    @pytest.mark.asyncio
+    async def test_end_round_clears_timer_expires_at(self, db):
+        """Test that end_round clears the timer_expires_at field."""
+        timer_expires = "2024-06-15T12:00:00+00:00"
+        round_id = await db.create_round(
+            guild_id="123",
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author123",
+            timer_expires_at=timer_expires,
+        )
+
+        await db.end_round(round_id, "completed")
+
+        row = await db.fetch_one("SELECT * FROM game_rounds WHERE id = ?", (round_id,))
+        assert row["timer_expires_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_all_active_rounds_returns_active_only(self, db):
+        """Test that get_all_active_rounds only returns active rounds."""
+        # Create an active round
+        active_id = await db.create_round(
+            guild_id="123",
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author123",
+            timer_expires_at="2024-06-15T12:00:00+00:00",
+        )
+
+        # Create and end another round
+        ended_id = await db.create_round(
+            guild_id="123",
+            game_channel_id="457",
+            target_message_id="790",
+            target_channel_id="102",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author456",
+            timer_expires_at="2024-06-15T12:00:00+00:00",
+        )
+        await db.end_round(ended_id, "completed")
+
+        active_rounds = await db.get_all_active_rounds()
+        assert len(active_rounds) == 1
+        assert active_rounds[0].id == active_id
+
+    @pytest.mark.asyncio
+    async def test_get_all_active_rounds_multiple_guilds(self, db):
+        """Test that get_all_active_rounds returns rounds from all guilds."""
+        # Create active rounds in different guilds
+        round1_id = await db.create_round(
+            guild_id="guild1",
+            game_channel_id="chan1",
+            target_message_id="msg1",
+            target_channel_id="target1",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author1",
+            timer_expires_at="2024-06-15T12:00:00+00:00",
+        )
+        round2_id = await db.create_round(
+            guild_id="guild2",
+            game_channel_id="chan2",
+            target_message_id="msg2",
+            target_channel_id="target2",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author2",
+            timer_expires_at="2024-06-15T13:00:00+00:00",
+        )
+
+        active_rounds = await db.get_all_active_rounds()
+        assert len(active_rounds) == 2
+        round_ids = {r.id for r in active_rounds}
+        assert round_ids == {round1_id, round2_id}
+
+    @pytest.mark.asyncio
+    async def test_get_all_active_rounds_empty(self, db):
+        """Test that get_all_active_rounds returns empty list when no active rounds."""
+        active_rounds = await db.get_all_active_rounds()
+        assert active_rounds == []

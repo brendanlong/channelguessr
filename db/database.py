@@ -89,13 +89,18 @@ class Database:
         target_channel_id: str,
         target_timestamp_ms: int,
         target_author_id: str,
+        timer_expires_at: str | None = None,
     ) -> int:
-        """Create a new game round. Returns the round ID."""
+        """Create a new game round. Returns the round ID.
+
+        Args:
+            timer_expires_at: ISO format datetime string for when the timer expires.
+        """
         cursor = await self.execute(
             """
             INSERT INTO game_rounds
-            (guild_id, game_channel_id, target_message_id, target_channel_id, target_timestamp_ms, target_author_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (guild_id, game_channel_id, target_message_id, target_channel_id, target_timestamp_ms, target_author_id, timer_expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 guild_id,
@@ -104,6 +109,7 @@ class Database:
                 target_channel_id,
                 target_timestamp_ms,
                 target_author_id,
+                timer_expires_at,
             ),
         )
         return cursor.lastrowid or 0
@@ -122,15 +128,25 @@ class Database:
         return GameRound(**dict(row)) if row else None
 
     async def end_round(self, round_id: int, status: str = "completed") -> None:
-        """End a game round."""
+        """End a game round and clear the timer."""
         await self.execute(
             """
             UPDATE game_rounds
-            SET status = ?, ended_at = CURRENT_TIMESTAMP
+            SET status = ?, ended_at = CURRENT_TIMESTAMP, timer_expires_at = NULL
             WHERE id = ?
             """,
             (status, round_id),
         )
+
+    async def get_all_active_rounds(self) -> list[GameRound]:
+        """Get all active rounds across all guilds (for timer restoration on startup)."""
+        rows = await self.fetch_all(
+            """
+            SELECT * FROM game_rounds
+            WHERE status = 'active'
+            """
+        )
+        return [GameRound(**dict(row)) for row in rows]
 
     async def get_round_number(self, guild_id: str) -> int:
         """Get the total number of completed rounds for a guild."""

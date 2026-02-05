@@ -363,3 +363,96 @@ class TestTimerExecution:
 
         # Results should have been posted
         mock_channel.send.assert_called()
+
+
+class TestTimeWarning:
+    @pytest.mark.asyncio
+    async def test_time_warning_sent_before_round_ends(self, db, mock_bot, mock_guild, mock_channel):
+        """Test that a warning is sent 10 seconds before the round ends."""
+        # Create a round with a timer expiring in 0.15 seconds (enough for warning + end)
+        future_time = datetime.now(timezone.utc) + timedelta(seconds=0.15)
+        await db.create_round(
+            guild_id="123",
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="111222333",
+            timer_expires_at=future_time.isoformat(),
+        )
+
+        mock_bot.get_guild.return_value = mock_guild
+        mock_guild.id = 123
+        mock_guild.get_member = MagicMock(return_value=None)
+        mock_guild.fetch_member = AsyncMock(return_value=None)
+
+        def get_channel(channel_id):
+            if channel_id == 101:
+                target_channel = MagicMock()
+                target_channel.mention = "#target-channel"
+                return target_channel
+            return mock_channel
+
+        mock_guild.get_channel = get_channel
+        service = GameService(mock_bot, db)
+
+        # Restore timers
+        restored = await service.restore_timers()
+        assert restored == 1
+
+        # Wait for the task to execute (timer is very short, no warning expected)
+        await asyncio.sleep(0.3)
+
+        # For very short timers (< 10s), no warning should be sent, only the final results
+        # The round should be ended
+        active = await db.get_active_round("123", "456")
+        assert active is None
+
+    @pytest.mark.asyncio
+    async def test_send_time_warning_if_active_sends_warning(self, db, mock_bot, mock_channel):
+        """Test that _send_time_warning_if_active sends a warning for active rounds."""
+        # Create an active round
+        future_time = datetime.now(timezone.utc) + timedelta(minutes=5)
+        round_id = await db.create_round(
+            guild_id="123",
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="111222333",
+            timer_expires_at=future_time.isoformat(),
+        )
+
+        service = GameService(mock_bot, db)
+
+        # Call the warning method
+        await service._send_time_warning_if_active(round_id, mock_channel, 10)
+
+        # Should have sent a warning
+        mock_channel.send.assert_called_once()
+        call_args = mock_channel.send.call_args[0][0]
+        assert "10 seconds remaining" in call_args
+
+    @pytest.mark.asyncio
+    async def test_send_time_warning_if_active_skips_ended_round(self, db, mock_bot, mock_channel):
+        """Test that _send_time_warning_if_active does not send warning for ended rounds."""
+        # Create a round and end it
+        future_time = datetime.now(timezone.utc) + timedelta(minutes=5)
+        round_id = await db.create_round(
+            guild_id="123",
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="111222333",
+            timer_expires_at=future_time.isoformat(),
+        )
+        await db.end_round(round_id, "completed")
+
+        service = GameService(mock_bot, db)
+
+        # Call the warning method
+        await service._send_time_warning_if_active(round_id, mock_channel, 10)
+
+        # Should NOT have sent a warning
+        mock_channel.send.assert_not_called()

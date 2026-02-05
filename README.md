@@ -64,7 +64,7 @@ uv run python -m bot.main
 | `/guess <channel> <time> [author]` | Submit your guess |
 | `/skip` | Skip current round (mod only) |
 | `/leaderboard` | Show server leaderboard |
-| `/stats [user]` | Show player stats |
+| `/stats <user>` | Show player stats |
 | `/help` | Show help information |
 
 ## How to Play

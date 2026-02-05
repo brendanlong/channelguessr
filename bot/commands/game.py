@@ -182,12 +182,12 @@ class GameCommands(commands.Cog):
 
         await interaction.followup.send(message, ephemeral=True)
 
-    @app_commands.command(name="stats", description="Show your Channelguessr stats")
-    @app_commands.describe(user="The user to show stats for (defaults to yourself)")
+    @app_commands.command(name="stats", description="Show Channelguessr stats for a user")
+    @app_commands.describe(user="The user to show stats for")
     async def stats(
         self,
         interaction: discord.Interaction,
-        user: discord.Member | None = None,
+        user: discord.Member,
     ):
         """Show player stats."""
         await interaction.response.defer(ephemeral=True)
@@ -196,7 +196,7 @@ class GameCommands(commands.Cog):
             await interaction.followup.send("This command only works in servers.", ephemeral=True)
             return
 
-        target_user = user or interaction.user
+        target_user = user
         guild_id = str(interaction.guild.id)
         player_id = str(target_user.id)
 
@@ -231,7 +231,7 @@ A game where you guess which channel a message came from, when it was posted, an
 - `/guess <channel> <time> [author]` - Submit your guess
 - `/skip` - Skip the current round (mods only)
 - `/leaderboard` - View the leaderboard
-- `/stats [user]` - View player stats
+- `/stats <user>` - View player stats
 - `/cleardata` - Delete your data from all servers
 """
         await interaction.response.send_message(help_text, ephemeral=True)

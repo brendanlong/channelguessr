@@ -7,6 +7,9 @@ def calculate_time_score(guessed_timestamp_ms: int, actual_timestamp_ms: int) ->
     """Calculate score based on time accuracy.
 
     Returns 0-500 points based on how close the guess is to the actual time.
+
+    Scoring brackets are designed to be fair for "Month Year" format guesses,
+    where guessing one month off should still give a reasonable score.
     """
     # Calculate difference in days
     diff_ms = abs(guessed_timestamp_ms - actual_timestamp_ms)
@@ -15,12 +18,14 @@ def calculate_time_score(guessed_timestamp_ms: int, actual_timestamp_ms: int) ->
     if diff_days <= 1:
         return 500
     elif diff_days <= 7:
+        return 450
+    elif diff_days <= 31:
         return 400
-    elif diff_days <= 30:
+    elif diff_days <= 62:
         return 300
-    elif diff_days <= 90:
+    elif diff_days <= 93:
         return 200
-    elif diff_days <= 180:
+    elif diff_days <= 186:
         return 100
     elif diff_days <= 365:
         return 50

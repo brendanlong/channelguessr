@@ -30,29 +30,47 @@ class TestCalculateTimeScore:
         actual = 1609459200000
         # 3 days off
         guessed = actual + (3 * 24 * 60 * 60 * 1000)
-        assert calculate_time_score(guessed, actual) == 400
+        assert calculate_time_score(guessed, actual) == 450
 
     def test_within_one_month(self):
         actual = 1609459200000
         # 15 days off
         guessed = actual + (15 * 24 * 60 * 60 * 1000)
+        assert calculate_time_score(guessed, actual) == 400
+
+    def test_one_month_off(self):
+        # Guessing one month off (e.g., November instead of December)
+        # should give a reasonable score. Month guesses default to the 15th,
+        # so 30-31 days difference is typical for being one month off.
+        actual = 1609459200000
+        # 31 days off (just over one month)
+        guessed = actual + (31 * 24 * 60 * 60 * 1000)
+        assert calculate_time_score(guessed, actual) == 400
+        # 45 days off (solidly between one and two months)
+        guessed = actual + (45 * 24 * 60 * 60 * 1000)
         assert calculate_time_score(guessed, actual) == 300
 
-    def test_within_three_months(self):
+    def test_two_months_off(self):
         actual = 1609459200000
-        # 60 days off
+        # 60 days off (about two months)
         guessed = actual + (60 * 24 * 60 * 60 * 1000)
+        assert calculate_time_score(guessed, actual) == 300
+
+    def test_three_months_off(self):
+        actual = 1609459200000
+        # 90 days off (about three months)
+        guessed = actual + (90 * 24 * 60 * 60 * 1000)
         assert calculate_time_score(guessed, actual) == 200
 
     def test_within_six_months(self):
         actual = 1609459200000
-        # 120 days off
+        # 120 days off (about four months)
         guessed = actual + (120 * 24 * 60 * 60 * 1000)
         assert calculate_time_score(guessed, actual) == 100
 
     def test_within_one_year(self):
         actual = 1609459200000
-        # 300 days off
+        # 300 days off (about ten months)
         guessed = actual + (300 * 24 * 60 * 60 * 1000)
         assert calculate_time_score(guessed, actual) == 50
 
@@ -66,7 +84,7 @@ class TestCalculateTimeScore:
         actual = 1609459200000
         # 3 days before
         guessed = actual - (3 * 24 * 60 * 60 * 1000)
-        assert calculate_time_score(guessed, actual) == 400
+        assert calculate_time_score(guessed, actual) == 450
 
 
 class TestCalculateTotalScore:

@@ -142,6 +142,19 @@ channelguessr/
 └── README.md
 ```
 
+## Development
+
+```bash
+# Install dev dependencies
+uv sync --dev
+
+# Install pre-commit hooks (auto-formats code on commit)
+uv run pre-commit install
+
+# Run pre-commit manually on all files
+uv run pre-commit run --all-files
+```
+
 ## Requirements
 
 - Python 3.10+

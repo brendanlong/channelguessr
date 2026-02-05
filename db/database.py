@@ -251,17 +251,54 @@ class Database:
             ),
         )
 
-    async def get_leaderboard(self, guild_id: str, limit: int = 10) -> list[PlayerScore]:
-        """Get the top players for a guild."""
-        rows = await self.fetch_all(
+    async def get_leaderboard(
+        self,
+        guild_id: str,
+        days: int | None = None,
+    ) -> list[PlayerScore]:
+        """Get player scores for a guild, optionally filtered by time.
+
+        Args:
+            guild_id: The guild ID to get the leaderboard for.
+            days: If provided, only include scores from the last N days.
+
+        Returns:
+            List of PlayerScore objects (unsorted - caller should sort as needed).
+        """
+        if days is not None:
+            # Calculate scores from guesses within the time period
+            query = """
+                SELECT
+                    ? as guild_id,
+                    g.player_id,
+                    SUM(
+                        CASE WHEN g.channel_correct THEN 500 ELSE 0 END +
+                        COALESCE(g.time_score, 0) +
+                        CASE WHEN g.author_correct THEN 500 ELSE 0 END
+                    ) as total_score,
+                    COUNT(*) as rounds_played,
+                    SUM(
+                        CASE WHEN g.channel_correct
+                            AND COALESCE(g.time_score, 0) = 500
+                            AND g.author_correct
+                        THEN 1 ELSE 0 END
+                    ) as perfect_guesses
+                FROM guesses g
+                JOIN game_rounds r ON g.round_id = r.id
+                WHERE r.guild_id = ?
+                    AND r.status = 'completed'
+                    AND r.ended_at >= datetime('now', ?)
+                GROUP BY g.player_id
             """
-            SELECT * FROM player_scores
-            WHERE guild_id = ?
-            ORDER BY total_score DESC
-            LIMIT ?
-            """,
-            (guild_id, limit),
-        )
+            rows = await self.fetch_all(query, (guild_id, guild_id, f"-{days} days"))
+        else:
+            # Use the existing player_scores table for all-time stats
+            query = """
+                SELECT * FROM player_scores
+                WHERE guild_id = ?
+            """
+            rows = await self.fetch_all(query, (guild_id,))
+
         return [PlayerScore(**dict(row)) for row in rows]
 
     async def get_player_stats(self, guild_id: str, player_id: str) -> PlayerScore | None:

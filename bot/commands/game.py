@@ -165,7 +165,16 @@ class GameCommands(commands.Cog):
             await interaction.response.send_message("An error occurred while skipping the round.", ephemeral=True)
 
     @app_commands.command(name="leaderboard", description="Show the server leaderboard")
-    async def leaderboard(self, interaction: discord.Interaction):
+    @app_commands.describe(
+        days="Only include scores from the last N days (e.g., 1 for today, 7 for last week, 30 for last month)",
+        adjusted="Sort by average score per round instead of total score",
+    )
+    async def leaderboard(
+        self,
+        interaction: discord.Interaction,
+        days: app_commands.Range[int, 1, 365] | None = None,
+        adjusted: bool = False,
+    ):
         """Show the server leaderboard."""
         await interaction.response.defer(ephemeral=True)
 
@@ -173,12 +182,29 @@ class GameCommands(commands.Cog):
             await interaction.followup.send("This command only works in servers.", ephemeral=True)
             return
 
-        players = await self.bot.db.get_leaderboard(str(interaction.guild.id))
+        players = await self.bot.db.get_leaderboard(str(interaction.guild.id), days=days)
+
+        # Build the title based on options
+        title_parts = []
+        if days is not None:
+            if days == 1:
+                title_parts.append("Today's")
+            elif days == 7:
+                title_parts.append("Weekly")
+            elif days == 30:
+                title_parts.append("Monthly")
+            else:
+                title_parts.append(f"Last {days} Days")
+        if adjusted:
+            title_parts.append("Adjusted")
+        title_parts.append("Leaderboard")
+        title = " ".join(title_parts)
 
         message = format_leaderboard(
             players=players,
             guild=interaction.guild,
-            title="Leaderboard",
+            title=title,
+            sort_by="average" if adjusted else "total",
         )
 
         await interaction.followup.send(message, ephemeral=True)

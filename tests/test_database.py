@@ -236,12 +236,13 @@ class TestPlayerScores:
         await db.update_player_score("123", "player2", 1000, True)
         await db.update_player_score("123", "player3", 750, False)
 
-        leaderboard = await db.get_leaderboard("123", limit=10)
+        leaderboard = await db.get_leaderboard("123")
         assert len(leaderboard) == 3
-        # Should be sorted by score descending
-        assert leaderboard[0].player_id == "player2"
-        assert leaderboard[1].player_id == "player3"
-        assert leaderboard[2].player_id == "player1"
+        # Check all players are returned with correct scores
+        scores = {p.player_id: p.total_score for p in leaderboard}
+        assert scores["player1"] == 500
+        assert scores["player2"] == 1000
+        assert scores["player3"] == 750
 
     @pytest.mark.asyncio
     async def test_get_player_rank(self, db):
@@ -258,6 +259,98 @@ class TestPlayerScores:
         # Player with no scores should get rank 1
         rank = await db.get_player_rank("123", "nonexistent")
         assert rank == 1
+
+
+class TestLeaderboardWithDays:
+    @pytest.mark.asyncio
+    async def test_get_leaderboard_by_days(self, db):
+        """Test get_leaderboard with time filter."""
+        guild_id = "123"
+
+        # Create a completed round from today
+        round_id = await db.create_round(
+            guild_id=guild_id,
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author123",
+        )
+        await db.end_round(round_id, "completed")
+
+        # Add guesses to the round
+        await db.add_guess(
+            round_id=round_id,
+            player_id="player1",
+            guessed_channel_id="101",
+            guessed_timestamp_ms=1609459200000,
+            channel_correct=True,
+            time_score=500,
+            guessed_author_id="author123",
+            author_correct=True,
+        )
+        await db.add_guess(
+            round_id=round_id,
+            player_id="player2",
+            guessed_channel_id="wrong",
+            guessed_timestamp_ms=1609459200000,
+            channel_correct=False,
+            time_score=300,
+            guessed_author_id="wrong",
+            author_correct=False,
+        )
+
+        # Get leaderboard for last day
+        leaderboard = await db.get_leaderboard(guild_id, days=1)
+        assert len(leaderboard) == 2
+        # Check scores are calculated correctly
+        scores = {p.player_id: p.total_score for p in leaderboard}
+        # player1: 500 (channel) + 500 (time) + 500 (author) = 1500
+        assert scores["player1"] == 1500
+        # player2: 0 (channel) + 300 (time) + 0 (author) = 300
+        assert scores["player2"] == 300
+
+    @pytest.mark.asyncio
+    async def test_get_leaderboard_time_excludes_old_rounds(self, db):
+        """Test that time filter excludes rounds outside the time window."""
+        guild_id = "123"
+
+        # Create a round and manually set its ended_at to be old
+        round_id = await db.create_round(
+            guild_id=guild_id,
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author123",
+        )
+        # End the round, then manually update ended_at to 10 days ago
+        await db.end_round(round_id, "completed")
+        await db.execute(
+            "UPDATE game_rounds SET ended_at = datetime('now', '-10 days') WHERE id = ?",
+            (round_id,),
+        )
+
+        # Add a guess to the old round
+        await db.add_guess(
+            round_id=round_id,
+            player_id="player1",
+            guessed_channel_id="101",
+            guessed_timestamp_ms=1609459200000,
+            channel_correct=True,
+            time_score=500,
+            guessed_author_id="author123",
+            author_correct=True,
+        )
+
+        # Get leaderboard for last 7 days - should not include the old round
+        leaderboard = await db.get_leaderboard(guild_id, days=7)
+        assert len(leaderboard) == 0
+
+        # Get leaderboard for last 30 days - should include it
+        leaderboard = await db.get_leaderboard(guild_id, days=30)
+        assert len(leaderboard) == 1
+        assert leaderboard[0].player_id == "player1"
 
 
 class TestUserDataDeletion:

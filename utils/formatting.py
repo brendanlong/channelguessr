@@ -313,7 +313,7 @@ def format_leaderboard(
 
         # Escape the mention to avoid pinging users
         member = guild.get_member(int(player_id))
-        player_display = f"`@{member.display_name}`" if member else f"`@user`"
+        player_display = f"`@{member.display_name}`" if member else "`@user`"
 
         if sort_by == "average":
             score_display = f"**{avg_score(player):.0f}** avg pts/game"

@@ -3,6 +3,7 @@
 import random
 import re
 from collections.abc import Sequence
+from typing import Literal
 
 import discord
 
@@ -269,8 +270,18 @@ def format_leaderboard(
     players: list[PlayerScore],
     guild: discord.Guild,
     title: str = "Leaderboard",
+    sort_by: Literal["total", "average"] = "total",
+    limit: int = 10,
 ) -> str:
-    """Format the leaderboard display."""
+    """Format the leaderboard display.
+
+    Args:
+        players: List of player scores to display.
+        guild: The guild to format for.
+        title: The title to show at the top.
+        sort_by: Sort and display by "total" score or "average" score per round.
+        limit: Maximum number of players to show.
+    """
     lines = [
         f"# 🏆 {title}",
         "",
@@ -280,16 +291,29 @@ def format_leaderboard(
         lines.append("*No players yet! Start a game with `/start`*")
         return "\n".join(lines)
 
+    # Sort players
+    def avg_score(p: PlayerScore) -> float:
+        return p.total_score / p.rounds_played if p.rounds_played > 0 else 0
+
+    if sort_by == "average":
+        sorted_players = sorted(players, key=avg_score, reverse=True)
+    else:
+        sorted_players = sorted(players, key=lambda p: p.total_score, reverse=True)
+
     medals = ["🥇", "🥈", "🥉"]
 
-    for i, player in enumerate(players):
+    for i, player in enumerate(sorted_players[:limit]):
         medal = medals[i] if i < 3 else f"{i + 1}."
         player_id = player.player_id
-        total_score = player.total_score
         rounds_played = player.rounds_played
         perfect = player.perfect_guesses
 
-        lines.append(f"{medal} <@{player_id}> - **{total_score:,}** pts ({rounds_played} games, {perfect} perfect)")
+        if sort_by == "average":
+            score_display = f"**{avg_score(player):.0f}** avg pts/game"
+        else:
+            score_display = f"**{player.total_score:,}** pts"
+
+        lines.append(f"{medal} <@{player_id}> - {score_display} ({rounds_played} games, {perfect} perfect)")
 
     return "\n".join(lines)
 

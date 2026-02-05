@@ -7,7 +7,7 @@ from typing import Literal
 
 import discord
 
-from bot.services.scoring_service import calculate_total_score
+from bot.services.scoring_service import calculate_total_score, is_perfect_guess
 from models import Guess, PlayerScore
 
 # URL pattern for detecting links
@@ -245,6 +245,7 @@ def format_round_results(
             player_id = guess.player_id
             channel_correct = guess.channel_correct or False
             time_score = guess.time_score or 0
+            author_correct = guess.author_correct or False
 
             details = []
 
@@ -256,10 +257,12 @@ def format_round_results(
 
             # Format author guess
             if guess.guessed_author_id:
-                author_emoji = "✅" if guess.author_correct else "❌"
+                author_emoji = "✅" if author_correct else "❌"
                 details.append(f"Author: {author_emoji}")
 
-            lines.append(f"{i}. <@{player_id}>: **{total_score}** pts ({', '.join(details)})")
+            # Add lion for perfect guesses (for Laura)
+            perfect_indicator = " 🦁" if is_perfect_guess(channel_correct, time_score, author_correct) else ""
+            lines.append(f"{i}. <@{player_id}>: **{total_score}** pts ({', '.join(details)}){perfect_indicator}")
     else:
         lines.append("*No guesses submitted!*")
 

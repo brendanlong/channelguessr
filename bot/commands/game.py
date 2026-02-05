@@ -168,15 +168,17 @@ class GameCommands(commands.Cog):
     @app_commands.describe(
         days="Only include scores from the last N days (e.g., 1 for today, 7 for last week, 30 for last month)",
         adjusted="Sort by average score per round instead of total score",
+        public="Show the leaderboard to everyone in the channel instead of just you",
     )
     async def leaderboard(
         self,
         interaction: discord.Interaction,
         days: app_commands.Range[int, 1, 365] | None = None,
         adjusted: bool = False,
+        public: bool = False,
     ):
         """Show the server leaderboard."""
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=not public)
 
         if not interaction.guild or not self.bot.db:
             await interaction.followup.send("This command only works in servers.", ephemeral=True)
@@ -207,7 +209,7 @@ class GameCommands(commands.Cog):
             sort_by="average" if adjusted else "total",
         )
 
-        await interaction.followup.send(message, ephemeral=True)
+        await interaction.followup.send(message, ephemeral=not public)
 
     @app_commands.command(name="stats", description="Show your Channelguessr stats")
     @app_commands.describe(user="The user to show stats for (defaults to yourself)")

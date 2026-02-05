@@ -1,6 +1,11 @@
 """Tests for message formatting utilities."""
 
-from utils.formatting import DISCORD_MAX_LENGTH, escape_mentions, format_game_message
+from utils.formatting import (
+    DISCORD_MAX_LENGTH,
+    escape_mentions,
+    format_game_message,
+    format_time_warning,
+)
 
 
 class TestFormatGameMessage:
@@ -153,3 +158,23 @@ class TestEscapeMentions:
         text = "Check out <#123456789>!"
         result = escape_mentions(text, None)
         assert result == "Check out <#123456789>!"
+
+
+class TestFormatTimeWarning:
+    """Tests for the format_time_warning function."""
+
+    def test_format_time_warning_10_seconds(self):
+        """Test warning message for 10 seconds remaining."""
+        result = format_time_warning(10)
+        assert "10 seconds remaining" in result
+        assert "/guess" in result
+
+    def test_format_time_warning_contains_emoji(self):
+        """Test that warning includes a timer emoji."""
+        result = format_time_warning(10)
+        assert "⏰" in result
+
+    def test_format_time_warning_other_values(self):
+        """Test warning message with different second values."""
+        result = format_time_warning(5)
+        assert "5 seconds remaining" in result

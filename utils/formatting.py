@@ -321,3 +321,8 @@ def format_player_stats(
     ]
 
     return "\n".join(lines)
+
+
+def format_time_warning(seconds_remaining: int) -> str:
+    """Format a time warning message for the game round."""
+    return f"⏰ **{seconds_remaining} seconds remaining!** Submit your guess with `/guess`"

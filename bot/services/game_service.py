@@ -19,6 +19,7 @@ from models import GameRound
 from utils.formatting import (
     format_game_message,
     format_round_results,
+    format_time_warning,
 )
 from utils.snowflake import snowflake_to_timestamp_ms
 
@@ -107,13 +108,31 @@ class GameService:
     async def _round_timeout_with_delay(
         self, round_id: int, guild: discord.Guild, channel: discord.TextChannel, delay: float
     ):
-        """Handle round timeout with a specific delay (used for restored timers)."""
+        """Handle round timeout with a specific delay.
+
+        Schedules a 10-second warning if there's enough time remaining.
+        Both the warning and round end are scheduled independently to avoid timing issues.
+        """
+        warning_seconds = 10
+        if delay > warning_seconds:
+            # Schedule warning as independent task
+            asyncio.create_task(
+                self._send_warning_after_delay(round_id, channel, delay - warning_seconds, warning_seconds)
+            )
+
         await asyncio.sleep(delay)
 
         try:
             await self.end_round(round_id, guild, channel)
         except Exception:
             logger.exception(f"Error ending round {round_id} after timeout")
+
+    async def _send_warning_after_delay(
+        self, round_id: int, channel: discord.TextChannel, delay: float, seconds_remaining: int
+    ):
+        """Wait for delay, then send time warning if round is still active."""
+        await asyncio.sleep(delay)
+        await self._send_time_warning_if_active(round_id, channel, seconds_remaining)
 
     async def start_round(
         self,
@@ -192,7 +211,9 @@ class GameService:
 
         # Start timeout timer
         timer_key = f"{guild_id}:{channel_id}"
-        self._active_timers[timer_key] = asyncio.create_task(self._round_timeout(round_id, guild, channel, timeout))
+        self._active_timers[timer_key] = asyncio.create_task(
+            self._round_timeout_with_delay(round_id, guild, channel, timeout)
+        )
 
         return (True, "")
 
@@ -225,9 +246,14 @@ class GameService:
 
         return (before_messages, after_messages)
 
-    async def _round_timeout(self, round_id: int, guild: discord.Guild, channel: discord.TextChannel, timeout: int):
-        """Handle round timeout."""
-        await self._round_timeout_with_delay(round_id, guild, channel, timeout)
+    async def _send_time_warning_if_active(self, round_id: int, channel: discord.TextChannel, seconds_remaining: int):
+        """Send a time warning if the round is still active."""
+        try:
+            row = await self.db.fetch_one("SELECT status FROM game_rounds WHERE id = ?", (round_id,))
+            if row and row["status"] == "active":
+                await channel.send(format_time_warning(seconds_remaining))
+        except Exception:
+            logger.exception(f"Error sending time warning for round {round_id}")
 
     async def end_round(
         self,

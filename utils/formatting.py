@@ -311,12 +311,16 @@ def format_leaderboard(
         rounds_played = player.rounds_played
         perfect = player.perfect_guesses
 
+        # Escape the mention to avoid pinging users
+        member = guild.get_member(int(player_id))
+        player_display = f"`@{member.display_name}`" if member else f"`@user`"
+
         if sort_by == "average":
             score_display = f"**{avg_score(player):.0f}** avg pts/game"
         else:
             score_display = f"**{player.total_score:,}** pts"
 
-        lines.append(f"{medal} <@{player_id}> - {score_display} ({rounds_played} games, {perfect} perfect)")
+        lines.append(f"{medal} {player_display} - {score_display} ({rounds_played} games, {perfect} perfect)")
 
     return "\n".join(lines)
 

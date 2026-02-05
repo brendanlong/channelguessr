@@ -192,14 +192,15 @@ class TestFormatLeaderboard:
             PlayerScore(guild_id="123", player_id="2", total_score=1000, rounds_played=1, perfect_guesses=0),
             PlayerScore(guild_id="123", player_id="3", total_score=750, rounds_played=1, perfect_guesses=0),
         ]
-        guild = mock_guild()
+        guild = mock_guild(members={1: "Player1", 2: "Player2", 3: "Player3"})
 
         result = format_leaderboard(players, guild)
 
         # Check order in output: player2 (1000) > player3 (750) > player1 (500)
-        pos_2 = result.find("<@2>")
-        pos_3 = result.find("<@3>")
-        pos_1 = result.find("<@1>")
+        # Mentions are escaped as `@DisplayName`
+        pos_2 = result.find("`@Player2`")
+        pos_3 = result.find("`@Player3`")
+        pos_1 = result.find("`@Player1`")
         assert pos_2 < pos_3 < pos_1
 
     def test_sorts_by_average_when_requested(self, mock_guild):
@@ -212,15 +213,16 @@ class TestFormatLeaderboard:
             # player3: 1500 total / 3 rounds = 500 avg
             PlayerScore(guild_id="123", player_id="3", total_score=1500, rounds_played=3, perfect_guesses=0),
         ]
-        guild = mock_guild()
+        guild = mock_guild(members={1: "Player1", 2: "Player2", 3: "Player3"})
 
         result = format_leaderboard(players, guild, sort_by="average")
 
         # By average: player2 (750) > player1 (500) = player3 (500)
         # player2 should be first
-        pos_2 = result.find("<@2>")
-        pos_1 = result.find("<@1>")
-        pos_3 = result.find("<@3>")
+        # Mentions are escaped as `@DisplayName`
+        pos_2 = result.find("`@Player2`")
+        pos_1 = result.find("`@Player1`")
+        pos_3 = result.find("`@Player3`")
         assert pos_2 < pos_1
         assert pos_2 < pos_3
 
@@ -230,14 +232,17 @@ class TestFormatLeaderboard:
             PlayerScore(guild_id="123", player_id=str(i), total_score=i * 100, rounds_played=1, perfect_guesses=0)
             for i in range(1, 20)
         ]
-        guild = mock_guild()
+        # Create members for players 14-19 (the ones we're checking for)
+        members = {i: f"Player{i}" for i in range(14, 20)}
+        guild = mock_guild(members=members)
 
         result = format_leaderboard(players, guild, limit=5)
 
         # Should only show top 5 (players 19, 18, 17, 16, 15 by score)
-        assert "<@19>" in result
-        assert "<@15>" in result
-        assert "<@14>" not in result
+        # Mentions are escaped as `@DisplayName`
+        assert "`@Player19`" in result
+        assert "`@Player15`" in result
+        assert "`@Player14`" not in result
 
     def test_shows_average_format_when_sorting_by_average(self, mock_guild):
         """Display format changes when sorting by average."""

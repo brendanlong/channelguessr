@@ -340,7 +340,7 @@ class GameService:
         player: discord.Member,
         guessed_channel: discord.TextChannel,
         guessed_time: str,
-        guessed_author: discord.Member | None = None,
+        guessed_author: discord.Member,
     ) -> tuple[bool, str]:
         """Submit a guess for the active round.
 
@@ -371,8 +371,8 @@ class GameService:
         time_score = calculate_time_score(guessed_timestamp_ms, active_round.target_timestamp_ms)
 
         # Calculate author score
-        guessed_author_id = str(guessed_author.id) if guessed_author else None
-        author_correct = guessed_author_id == active_round.target_author_id if guessed_author_id else False
+        guessed_author_id = str(guessed_author.id)
+        author_correct = guessed_author_id == active_round.target_author_id
 
         # Save guess
         await self.db.add_guess(

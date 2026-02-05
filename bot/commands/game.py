@@ -103,18 +103,19 @@ class GameCommands(commands.Cog):
     @app_commands.describe(
         channel="The channel you think the message is from",
         time="When you think the message was posted (e.g., 'March 2024', 'Jan 15 2023')",
-        author="The user you think sent the message (optional, +500 points if correct)",
+        author="The user you think sent the message (+500 points if correct)",
     )
     async def guess(
         self,
         interaction: discord.Interaction,
         channel: discord.TextChannel,
         time: str,
-        author: discord.Member | None = None,
+        author: discord.Member,
     ):
         """Submit a guess for the current round."""
-        author_info = f", author=@{author.name}" if author else ""
-        logger.info(f"Guess command invoked by {interaction.user}: channel=#{channel.name}, time='{time}'{author_info}")
+        logger.info(
+            f"Guess command invoked by {interaction.user}: channel=#{channel.name}, time='{time}', author=@{author.name}"
+        )
         await interaction.response.defer(ephemeral=True)
 
         if not interaction.guild or not self.bot.game_service:
@@ -224,11 +225,11 @@ A game where you guess which channel a message came from, when it was posted, an
 **Scoring:**
 - **Channel:** 500 points if correct
 - **Time:** 500 points if within 1 day, scaling down to 0
-- **Author:** 500 points if correct (optional)
+- **Author:** 500 points if correct
 
 **Commands:**
 - `/start` - Start a new round
-- `/guess <channel> <time> [author]` - Submit your guess
+- `/guess <channel> <time> <author>` - Submit your guess
 - `/skip` - Skip the current round (mods only)
 - `/leaderboard` - View the leaderboard
 - `/stats [user]` - View player stats

@@ -1,10 +1,12 @@
 """Message formatting utilities for the game display."""
 
+import random
 import re
 from collections.abc import Sequence
 
 import discord
 
+from bot.services.scoring_service import calculate_total_score
 from models import Guess, PlayerScore
 
 # URL pattern for detecting links
@@ -226,25 +228,22 @@ def format_round_results(
     if guesses:
         lines.append("**Results:**")
 
-        # Sort by total score descending
-        sorted_guesses = sorted(
-            guesses,
-            key=lambda g: (
-                g.channel_correct or False,
-                g.time_score or 0,
-                g.author_correct or False,
-            ),
-            reverse=True,
-        )
+        # Calculate scores once upfront
+        guesses_with_scores = [
+            (g, calculate_total_score(g.channel_correct or False, g.time_score or 0, g.author_correct or False))
+            for g in guesses
+        ]
 
-        for i, guess in enumerate(sorted_guesses, 1):
+        def sort_key(v: tuple[Guess, int]) -> tuple[int, float]:
+            return (v[1], random.random())
+
+        # Sort by total score descending, with random tie-breaking
+        sorted_guesses = sorted(guesses_with_scores, key=sort_key, reverse=True)
+
+        for i, (guess, total_score) in enumerate(sorted_guesses, 1):
             player_id = guess.player_id
             channel_correct = guess.channel_correct or False
             time_score = guess.time_score or 0
-            author_correct = guess.author_correct or False
-
-            # Calculate total score (channel 500 + time + author 500)
-            total_score = (500 if channel_correct else 0) + time_score + (500 if author_correct else 0)
 
             details = []
 
@@ -255,9 +254,8 @@ def format_round_results(
             details.append(f"Time: {time_result}")
 
             # Format author guess
-            guessed_author_id = guess.guessed_author_id
-            if guessed_author_id:
-                author_emoji = "✅" if author_correct else "❌"
+            if guess.guessed_author_id:
+                author_emoji = "✅" if guess.author_correct else "❌"
                 details.append(f"Author: {author_emoji}")
 
             lines.append(f"{i}. <@{player_id}>: **{total_score}** pts ({', '.join(details)})")

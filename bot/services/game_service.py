@@ -16,6 +16,7 @@ from bot.services.scoring_service import (
 from config import Config
 from db.database import Database
 from models import GameRound
+from utils.discord_utils import get_or_fetch_member
 from utils.formatting import (
     format_game_message,
     format_round_results,
@@ -309,15 +310,7 @@ class GameService:
         # Look up author display name (try cache first, then API)
         target_author_display_name: str | None = None
         if round_info.target_author_id:
-            author_id = int(round_info.target_author_id)
-            member = guild.get_member(author_id)
-            if member is None:
-                try:
-                    member = await guild.fetch_member(author_id)
-                except discord.NotFound:
-                    pass  # Member left the server
-                except discord.HTTPException:
-                    logger.warning(f"Failed to fetch member {author_id}")
+            member = await get_or_fetch_member(guild, int(round_info.target_author_id))
             if member:
                 target_author_display_name = member.display_name
 

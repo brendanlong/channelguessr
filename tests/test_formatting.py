@@ -185,7 +185,7 @@ class TestFormatTimeWarning:
 class TestFormatLeaderboard:
     """Tests for format_leaderboard sorting and display."""
 
-    def test_sorts_by_total_score_by_default(self, mock_guild):
+    async def test_sorts_by_total_score_by_default(self, mock_guild):
         """Leaderboard sorts by total score descending by default."""
         players = [
             PlayerScore(guild_id="123", player_id="1", total_score=500, rounds_played=1, perfect_guesses=0),
@@ -194,7 +194,7 @@ class TestFormatLeaderboard:
         ]
         guild = mock_guild(members={1: "Player1", 2: "Player2", 3: "Player3"})
 
-        result = format_leaderboard(players, guild)
+        result = await format_leaderboard(players, guild)
 
         # Check order in output: player2 (1000) > player3 (750) > player1 (500)
         # Mentions are escaped as `@DisplayName`
@@ -203,7 +203,7 @@ class TestFormatLeaderboard:
         pos_1 = result.find("`@Player1`")
         assert pos_2 < pos_3 < pos_1
 
-    def test_sorts_by_average_when_requested(self, mock_guild):
+    async def test_sorts_by_average_when_requested(self, mock_guild):
         """Leaderboard sorts by average score when sort_by='average'."""
         players = [
             # player1: 1000 total / 2 rounds = 500 avg
@@ -215,7 +215,7 @@ class TestFormatLeaderboard:
         ]
         guild = mock_guild(members={1: "Player1", 2: "Player2", 3: "Player3"})
 
-        result = format_leaderboard(players, guild, sort_by="average")
+        result = await format_leaderboard(players, guild, sort_by="average")
 
         # By average: player2 (750) > player1 (500) = player3 (500)
         # player2 should be first
@@ -226,7 +226,7 @@ class TestFormatLeaderboard:
         assert pos_2 < pos_1
         assert pos_2 < pos_3
 
-    def test_respects_limit(self, mock_guild):
+    async def test_respects_limit(self, mock_guild):
         """Leaderboard respects the limit parameter."""
         players = [
             PlayerScore(guild_id="123", player_id=str(i), total_score=i * 100, rounds_played=1, perfect_guesses=0)
@@ -236,7 +236,7 @@ class TestFormatLeaderboard:
         members = {i: f"Player{i}" for i in range(14, 20)}
         guild = mock_guild(members=members)
 
-        result = format_leaderboard(players, guild, limit=5)
+        result = await format_leaderboard(players, guild, limit=5)
 
         # Should only show top 5 (players 19, 18, 17, 16, 15 by score)
         # Mentions are escaped as `@DisplayName`
@@ -244,23 +244,23 @@ class TestFormatLeaderboard:
         assert "`@Player15`" in result
         assert "`@Player14`" not in result
 
-    def test_shows_average_format_when_sorting_by_average(self, mock_guild):
+    async def test_shows_average_format_when_sorting_by_average(self, mock_guild):
         """Display format changes when sorting by average."""
         players = [
             PlayerScore(guild_id="123", player_id="1", total_score=1000, rounds_played=2, perfect_guesses=0),
         ]
         guild = mock_guild()
 
-        result = format_leaderboard(players, guild, sort_by="average")
+        result = await format_leaderboard(players, guild, sort_by="average")
 
         # Should show "pts/game" format
         assert "pts/game" in result
         assert "500" in result  # 1000 / 2 = 500 avg
 
-    def test_empty_leaderboard(self, mock_guild):
+    async def test_empty_leaderboard(self, mock_guild):
         """Empty leaderboard shows appropriate message."""
         guild = mock_guild()
 
-        result = format_leaderboard([], guild)
+        result = await format_leaderboard([], guild)
 
         assert "No players yet" in result

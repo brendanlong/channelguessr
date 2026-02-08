@@ -19,3 +19,4 @@ This is a Discord bot game where players guess which channel a message came from
 - Type check with `uv run pyright`
 - Lint with `uv run ruff check`
 - Format with `uv run ruff format`
+- Use `get_or_fetch_member()` from `utils/discord_utils.py` to look up guild members (checks cache first, then falls back to API)

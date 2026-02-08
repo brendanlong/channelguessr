@@ -1,5 +1,8 @@
 """Pytest configuration and shared fixtures."""
 
+from unittest.mock import MagicMock
+
+import discord
 import pytest
 
 
@@ -58,6 +61,14 @@ def mock_guild():
 
         def get_member(self, user_id: int) -> MockMember | None:
             return self._members.get(user_id)
+
+        async def fetch_member(self, user_id: int) -> MockMember:
+            member = self._members.get(user_id)
+            if member is not None:
+                return member
+            response = MagicMock()
+            response.status = 404
+            raise discord.NotFound(response, "Unknown Member")
 
         def get_role(self, role_id: int) -> MockRole | None:
             return self._roles.get(role_id)

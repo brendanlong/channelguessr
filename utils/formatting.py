@@ -9,6 +9,7 @@ import discord
 
 from bot.services.scoring_service import calculate_total_score, is_perfect_guess
 from models import Guess, PlayerScore
+from utils.discord_utils import get_or_fetch_member
 
 # URL pattern for detecting links
 URL_PATTERN = re.compile(r"https?://\S+")
@@ -269,7 +270,7 @@ def format_round_results(
     return "\n".join(lines)
 
 
-def format_leaderboard(
+async def format_leaderboard(
     players: list[PlayerScore],
     guild: discord.Guild,
     title: str = "Leaderboard",
@@ -312,7 +313,7 @@ def format_leaderboard(
         perfect = player.perfect_guesses
 
         # Escape the mention to avoid pinging users
-        member = guild.get_member(int(player_id))
+        member = await get_or_fetch_member(guild, int(player_id))
         player_display = f"`@{member.display_name}`" if member else "`@user`"
 
         if sort_by == "average":

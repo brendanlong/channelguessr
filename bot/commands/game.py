@@ -202,7 +202,7 @@ class GameCommands(commands.Cog):
         title_parts.append("Leaderboard")
         title = " ".join(title_parts)
 
-        message = format_leaderboard(
+        message = await format_leaderboard(
             players=players,
             guild=interaction.guild,
             title=title,

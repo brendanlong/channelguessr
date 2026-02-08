@@ -316,7 +316,7 @@ def format_leaderboard(
         player_display = f"`@{member.display_name}`" if member else "`@user`"
 
         if sort_by == "average":
-            score_display = f"**{avg_score(player):.0f}** avg pts/game"
+            score_display = f"**{avg_score(player):.0f}** pts/game"
         else:
             score_display = f"**{player.total_score:,}** pts"
 

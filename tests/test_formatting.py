@@ -253,8 +253,8 @@ class TestFormatLeaderboard:
 
         result = format_leaderboard(players, guild, sort_by="average")
 
-        # Should show "avg pts/game" format
-        assert "avg pts/game" in result
+        # Should show "pts/game" format
+        assert "pts/game" in result
         assert "500" in result  # 1000 / 2 = 500 avg
 
     def test_empty_leaderboard(self, mock_guild):

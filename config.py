@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # Scoring
     channel_score: int = Field(default=500, alias="CHANNEL_SCORE")
-    time_max_score: int = Field(default=500, alias="TIME_MAX_SCORE")
+    time_max_score: int = Field(default=1000, alias="TIME_MAX_SCORE")
     author_score: int = Field(default=500, alias="AUTHOR_SCORE")
 
 

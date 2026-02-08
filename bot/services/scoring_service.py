@@ -6,24 +6,25 @@ from config import Config
 def calculate_time_score(guessed_timestamp_ms: int, actual_timestamp_ms: int) -> int:
     """Calculate score based on time accuracy.
 
-    Returns 0-500 points based on how close the guess is to the actual time.
+    Returns 0-1000 points based on how close the guess is to the actual time.
+
+    Since month guesses are converted to the 15th of that month, we use
+    day-based thresholds:
+    - Within 16 days: correct month (500 points) or exact day (1000 points)
+    - Within 46 days: adjacent month (300 points)
+    - Beyond 46 days: 0 points
+
+    Exact day is defined as within 1 day (since guesses are date-level).
     """
-    # Calculate difference in days
     diff_ms = abs(guessed_timestamp_ms - actual_timestamp_ms)
     diff_days = diff_ms / (1000 * 60 * 60 * 24)
 
     if diff_days <= 1:
+        return 1000
+    elif diff_days <= 16:
         return 500
-    elif diff_days <= 7:
-        return 400
-    elif diff_days <= 30:
+    elif diff_days <= 46:
         return 300
-    elif diff_days <= 90:
-        return 200
-    elif diff_days <= 180:
-        return 100
-    elif diff_days <= 365:
-        return 50
     else:
         return 0
 

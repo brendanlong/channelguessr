@@ -97,9 +97,15 @@ class ChannelguessrBot(commands.Bot):
             logger.info(f"Cleaned up data for {len(orphaned_guild_ids)} orphaned guild(s)")
 
     async def _restore_game_timers(self):
-        """Restore timers for active game rounds after bot restart."""
+        """Restore timers for active game rounds after bot restart.
+
+        We wait briefly before restoring to give the gateway time to fully
+        populate guild and channel caches after connecting.
+        """
         if not self.game_service:
             return
+
+        await asyncio.sleep(5)
 
         try:
             restored_count = await self.game_service.restore_timers()

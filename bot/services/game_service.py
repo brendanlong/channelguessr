@@ -40,16 +40,22 @@ class GameService:
         """Get a text channel from cache, falling back to API fetch.
 
         The guild channel cache may not be populated when on_ready fires,
-        so we fall back to an API call if the cache misses.
+        so we fall back to an API call if the cache misses. We use
+        bot.fetch_channel() rather than guild.fetch_channel() because
+        guild.fetch_channel() can raise InvalidData if the guild object's
+        internal state isn't fully initialized during startup.
         """
         channel = guild.get_channel(channel_id)
         if channel is None:
             try:
-                channel = await guild.fetch_channel(channel_id)
+                channel = await self.bot.fetch_channel(channel_id)
             except (discord.NotFound, discord.Forbidden):
                 return None
             except discord.HTTPException:
                 logger.warning(f"Failed to fetch channel {channel_id}")
+                return None
+            except discord.DiscordException:
+                logger.warning(f"Error fetching channel {channel_id}")
                 return None
         if not isinstance(channel, discord.TextChannel):
             return None

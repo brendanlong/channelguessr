@@ -201,7 +201,7 @@ def _build_game_message(
 
 
 def format_round_results(
-    target_channel: discord.abc.GuildChannel | None,
+    target_channel: discord.abc.GuildChannel | discord.Thread | None,
     target_timestamp_ms: int,
     target_message_id: str,
     target_author_display_name: str | None,

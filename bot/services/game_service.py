@@ -26,6 +26,9 @@ from utils.snowflake import snowflake_to_timestamp_ms
 
 logger = logging.getLogger(__name__)
 
+# Game channels can be text channels or threads (e.g. when /start is used in a thread)
+MessageableChannel = discord.TextChannel | discord.Thread
+
 
 class GameService:
     """Service for managing game rounds."""
@@ -36,16 +39,19 @@ class GameService:
         self.message_selector = MessageSelector()
         self._active_timers: dict[str, asyncio.Task] = {}
 
-    async def _get_or_fetch_text_channel(self, guild: discord.Guild, channel_id: int) -> discord.TextChannel | None:
-        """Get a text channel from cache, falling back to API fetch.
+    async def _get_or_fetch_channel(self, guild: discord.Guild, channel_id: int) -> MessageableChannel | None:
+        """Get a text channel or thread from cache, falling back to API fetch.
 
         The guild channel cache may not be populated when on_ready fires,
         so we fall back to an API call if the cache misses. We use
         bot.fetch_channel() rather than guild.fetch_channel() because
         guild.fetch_channel() can raise InvalidData if the guild object's
         internal state isn't fully initialized during startup.
+
+        Uses get_channel_or_thread() for the cache lookup since get_channel()
+        does not return Thread objects, which are valid game channels.
         """
-        channel = guild.get_channel(channel_id)
+        channel = guild.get_channel_or_thread(channel_id)
         if channel is None:
             try:
                 channel = await self.bot.fetch_channel(channel_id)
@@ -57,7 +63,7 @@ class GameService:
             except discord.DiscordException:
                 logger.warning(f"Error fetching channel {channel_id}")
                 return None
-        if not isinstance(channel, discord.TextChannel):
+        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             return None
         return channel
 
@@ -76,7 +82,7 @@ class GameService:
                 await self.db.end_round(round_info.id, status="cancelled")
                 continue
 
-            channel = await self._get_or_fetch_text_channel(guild, int(round_info.game_channel_id))
+            channel = await self._get_or_fetch_channel(guild, int(round_info.game_channel_id))
             if not channel:
                 logger.warning(
                     f"Channel {round_info.game_channel_id} not found for round {round_info.id}, ending round"
@@ -113,7 +119,7 @@ class GameService:
         return restored_count
 
     async def _round_timeout_with_delay(
-        self, round_id: int, guild: discord.Guild, channel: discord.TextChannel, delay: float
+        self, round_id: int, guild: discord.Guild, channel: MessageableChannel, delay: float
     ):
         """Handle round timeout with a specific delay.
 
@@ -135,7 +141,7 @@ class GameService:
             logger.exception(f"Error ending round {round_id} after timeout")
 
     async def _send_warning_after_delay(
-        self, round_id: int, channel: discord.TextChannel, delay: float, seconds_remaining: int
+        self, round_id: int, channel: MessageableChannel, delay: float, seconds_remaining: int
     ):
         """Wait for delay, then send time warning if round is still active."""
         await asyncio.sleep(delay)
@@ -144,7 +150,7 @@ class GameService:
     async def start_round(
         self,
         guild: discord.Guild,
-        channel: discord.TextChannel,
+        channel: MessageableChannel,
         context_messages: int | None = None,
         timeout_seconds: int | None = None,
     ) -> tuple[bool, str]:
@@ -253,7 +259,7 @@ class GameService:
 
         return (before_messages, after_messages)
 
-    async def _send_time_warning_if_active(self, round_id: int, channel: discord.TextChannel, seconds_remaining: int):
+    async def _send_time_warning_if_active(self, round_id: int, channel: MessageableChannel, seconds_remaining: int):
         """Send a time warning if the round is still active."""
         try:
             row = await self.db.fetch_one("SELECT status FROM game_rounds WHERE id = ?", (round_id,))
@@ -266,7 +272,7 @@ class GameService:
         self,
         round_id: int,
         guild: discord.Guild,
-        channel: discord.TextChannel,
+        channel: MessageableChannel,
         status: str = "completed",
     ):
         """End a round and show results."""
@@ -311,7 +317,7 @@ class GameService:
             )
 
         # Format and send results
-        target_channel = await self._get_or_fetch_text_channel(guild, int(round_info.target_channel_id))
+        target_channel = await self._get_or_fetch_channel(guild, int(round_info.target_channel_id))
 
         # Look up author display name (try cache first, then API)
         target_author_display_name: str | None = None
@@ -335,7 +341,7 @@ class GameService:
     async def submit_guess(
         self,
         guild: discord.Guild,
-        channel: discord.TextChannel,
+        channel: MessageableChannel,
         player: discord.Member,
         guessed_channel: discord.TextChannel,
         guessed_time: str,
@@ -490,7 +496,7 @@ class GameService:
 
         return None
 
-    async def skip_round(self, guild: discord.Guild, channel: discord.TextChannel) -> tuple[bool, str]:
+    async def skip_round(self, guild: discord.Guild, channel: MessageableChannel) -> tuple[bool, str]:
         """Skip the current round (moderator only).
 
         Returns (success, message) tuple.

@@ -101,7 +101,7 @@ class TestRestoreTimers:
         )
 
         mock_bot.get_guild.return_value = mock_guild
-        mock_guild.get_channel = MagicMock(return_value=None)
+        mock_guild.get_channel_or_thread = MagicMock(return_value=None)
         mock_bot.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "Not found"))
         service = GameService(mock_bot, db)
 
@@ -128,9 +128,72 @@ class TestRestoreTimers:
 
         mock_bot.get_guild.return_value = mock_guild
         # Cache miss
-        mock_guild.get_channel = MagicMock(return_value=None)
+        mock_guild.get_channel_or_thread = MagicMock(return_value=None)
         # API hit via bot.fetch_channel
         mock_bot.fetch_channel = AsyncMock(return_value=mock_channel)
+        service = GameService(mock_bot, db)
+
+        restored = await service.restore_timers()
+
+        assert restored == 1
+        assert "123:456" in service._active_timers
+        mock_bot.fetch_channel.assert_called_once_with(456)
+        # Clean up
+        service._active_timers["123:456"].cancel()
+
+    @pytest.mark.asyncio
+    async def test_restore_timers_thread_channel(self, db, mock_bot, mock_guild):
+        """Test that timers are restored for games started in threads."""
+        future_time = datetime.now(timezone.utc) + timedelta(minutes=5)
+        await db.create_round(
+            guild_id="123",
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author123",
+            timer_expires_at=future_time.isoformat(),
+        )
+
+        mock_bot.get_guild.return_value = mock_guild
+        # Thread found in cache via get_channel_or_thread
+        mock_thread = MagicMock(spec=discord.Thread)
+        mock_thread.id = 456
+        mock_thread.name = "test-thread"
+        mock_thread.send = AsyncMock()
+        mock_guild.get_channel_or_thread = MagicMock(return_value=mock_thread)
+        service = GameService(mock_bot, db)
+
+        restored = await service.restore_timers()
+
+        assert restored == 1
+        assert "123:456" in service._active_timers
+        # Clean up
+        service._active_timers["123:456"].cancel()
+
+    @pytest.mark.asyncio
+    async def test_restore_timers_thread_fetched_via_api(self, db, mock_bot, mock_guild):
+        """Test that threads are fetched via API when not in cache."""
+        future_time = datetime.now(timezone.utc) + timedelta(minutes=5)
+        await db.create_round(
+            guild_id="123",
+            game_channel_id="456",
+            target_message_id="789",
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author123",
+            timer_expires_at=future_time.isoformat(),
+        )
+
+        mock_bot.get_guild.return_value = mock_guild
+        # Cache miss
+        mock_guild.get_channel_or_thread = MagicMock(return_value=None)
+        # API returns a Thread
+        mock_thread = MagicMock(spec=discord.Thread)
+        mock_thread.id = 456
+        mock_thread.name = "test-thread"
+        mock_thread.send = AsyncMock()
+        mock_bot.fetch_channel = AsyncMock(return_value=mock_thread)
         service = GameService(mock_bot, db)
 
         restored = await service.restore_timers()
@@ -156,7 +219,7 @@ class TestRestoreTimers:
         )
 
         mock_bot.get_guild.return_value = mock_guild
-        mock_guild.get_channel = MagicMock(return_value=mock_channel)
+        mock_guild.get_channel_or_thread = MagicMock(return_value=mock_channel)
         service = GameService(mock_bot, db)
 
         restored = await service.restore_timers()
@@ -181,7 +244,7 @@ class TestRestoreTimers:
         )
 
         mock_bot.get_guild.return_value = mock_guild
-        mock_guild.get_channel = MagicMock(return_value=mock_channel)
+        mock_guild.get_channel_or_thread = MagicMock(return_value=mock_channel)
         service = GameService(mock_bot, db)
 
         restored = await service.restore_timers()
@@ -206,7 +269,7 @@ class TestRestoreTimers:
         )
 
         mock_bot.get_guild.return_value = mock_guild
-        mock_guild.get_channel = MagicMock(return_value=mock_channel)
+        mock_guild.get_channel_or_thread = MagicMock(return_value=mock_channel)
         service = GameService(mock_bot, db)
 
         restored = await service.restore_timers()
@@ -247,7 +310,7 @@ class TestRestoreTimers:
         mock_channel2 = MagicMock()
         mock_channel2.id = 457
 
-        def get_channel(channel_id):
+        def get_channel_or_thread(channel_id):
             import discord
 
             if channel_id == 456:
@@ -260,7 +323,7 @@ class TestRestoreTimers:
                 return result
             return None
 
-        mock_guild.get_channel = get_channel
+        mock_guild.get_channel_or_thread = get_channel_or_thread
         service = GameService(mock_bot, db)
 
         restored = await service.restore_timers()
@@ -333,20 +396,20 @@ class TestTimerExecution:
         )
 
         mock_bot.get_guild.return_value = mock_guild
-        mock_guild.get_channel = MagicMock(return_value=mock_channel)
+        mock_guild.get_channel_or_thread = MagicMock(return_value=mock_channel)
         mock_guild.id = 123
         mock_guild.get_member = MagicMock(return_value=None)
         mock_guild.fetch_member = AsyncMock(return_value=None)
 
         # Mock the channel lookup for end_round
-        def get_channel(channel_id):
+        def get_channel_or_thread(channel_id):
             if channel_id == 101:
                 target_channel = MagicMock()
                 target_channel.mention = "#target-channel"
                 return target_channel
             return mock_channel
 
-        mock_guild.get_channel = get_channel
+        mock_guild.get_channel_or_thread = get_channel_or_thread
 
         service = GameService(mock_bot, db)
 
@@ -386,14 +449,14 @@ class TestTimeWarning:
         mock_guild.get_member = MagicMock(return_value=None)
         mock_guild.fetch_member = AsyncMock(return_value=None)
 
-        def get_channel(channel_id):
+        def get_channel_or_thread(channel_id):
             if channel_id == 101:
                 target_channel = MagicMock()
                 target_channel.mention = "#target-channel"
                 return target_channel
             return mock_channel
 
-        mock_guild.get_channel = get_channel
+        mock_guild.get_channel_or_thread = get_channel_or_thread
         service = GameService(mock_bot, db)
 
         # Restore timers

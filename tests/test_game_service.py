@@ -102,7 +102,7 @@ class TestRestoreTimers:
 
         mock_bot.get_guild.return_value = mock_guild
         mock_guild.get_channel = MagicMock(return_value=None)
-        mock_guild.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "Not found"))
+        mock_bot.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(), "Not found"))
         service = GameService(mock_bot, db)
 
         restored = await service.restore_timers()
@@ -129,15 +129,15 @@ class TestRestoreTimers:
         mock_bot.get_guild.return_value = mock_guild
         # Cache miss
         mock_guild.get_channel = MagicMock(return_value=None)
-        # API hit
-        mock_guild.fetch_channel = AsyncMock(return_value=mock_channel)
+        # API hit via bot.fetch_channel
+        mock_bot.fetch_channel = AsyncMock(return_value=mock_channel)
         service = GameService(mock_bot, db)
 
         restored = await service.restore_timers()
 
         assert restored == 1
         assert "123:456" in service._active_timers
-        mock_guild.fetch_channel.assert_called_once_with(456)
+        mock_bot.fetch_channel.assert_called_once_with(456)
         # Clean up
         service._active_timers["123:456"].cancel()
 

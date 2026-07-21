@@ -4,6 +4,8 @@
 
 A Discord bot game where players are shown a random "interesting" message (with surrounding context) and must guess which channel it came from and approximately when it was posted.
 
+Read more: [Channelguessr: A Discord game](https://www.brendanlong.com/channelguessr-a-discord-game.html)
+
 ## Features
 
 - **Random message selection**: The bot randomly selects interesting messages from your server's history

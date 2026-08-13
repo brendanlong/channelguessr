@@ -124,6 +124,9 @@ messages from there, and choose uniformly among the interesting ones in the batc
 Targets used in the last `RECENT_MESSAGE_MEMORY` rounds are skipped unless nothing
 else can be found.
 
+This is not uniform over all history — quiet channels are still over-sampled
+relative to busy ones, since channels are chosen uniformly.
+
 ## Project Structure
 
 ```

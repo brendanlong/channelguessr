@@ -3,12 +3,14 @@
 import time
 from datetime import datetime, timedelta, timezone
 from typing import cast
+from unittest.mock import MagicMock
 
 import discord
 import pytest
 
 from bot.services.message_selector import URL_PATTERN, MessageSelector, is_interesting_message
-from utils.snowflake import timestamp_ms_to_snowflake
+from config import Config
+from utils.snowflake import snowflake_to_timestamp_ms, timestamp_ms_to_snowflake
 
 DAY_MS = 24 * 60 * 60 * 1000
 
@@ -82,21 +84,34 @@ class TestIsInterestingMessage:
 class MockChannel:
     """A text channel whose history() returns a fixed list of messages."""
 
-    def __init__(self, name="general", messages=None, created_ms=None, last_message_ms=None):
+    def __init__(
+        self,
+        name="general",
+        messages=None,
+        created_ms=None,
+        last_message_ms=None,
+        forbidden_after=None,
+    ):
         self.name = name
         self.id = 999
         self._messages = messages or []
+        self._forbidden_after = forbidden_after
         now_ms = int(time.time() * 1000)
         created_ms = created_ms if created_ms is not None else now_ms - 400 * DAY_MS
         self.created_at = datetime.fromtimestamp(created_ms / 1000, tz=timezone.utc)
         self.last_message_id = timestamp_ms_to_snowflake(last_message_ms) if last_message_ms is not None else None
         self.history_calls = []
+        self.before_calls = []
 
-    def history(self, *, after, limit, oldest_first):
+    def history(self, *, after, before, limit, oldest_first):
         self.history_calls.append(after.id)
+        self.before_calls.append(before.id)
         messages = self._messages
+        forbid = self._forbidden_after is not None and len(self.history_calls) > self._forbidden_after
 
         async def _iter():
+            if forbid:
+                raise discord.Forbidden(MagicMock(status=403), "Missing Access")
             for msg in messages[:limit]:
                 yield msg
 
@@ -167,6 +182,16 @@ class TestChannelSearchBounds:
         assert bounds is not None
         assert bounds[1] == last_message_ms
 
+    def test_returns_none_for_channel_dead_before_the_window(self):
+        now_ms = int(time.time() * 1000)
+        # Last posted well before the lookback window opens
+        channel = MockChannel(created_ms=now_ms - 800 * DAY_MS, last_message_ms=now_ms - 500 * DAY_MS)
+
+        assert (
+            MessageSelector()._channel_search_bounds(as_channel(channel), now_ms - 365 * DAY_MS, now_ms - DAY_MS)
+            is None
+        )
+
     def test_returns_none_when_channel_is_newer_than_window(self):
         now_ms = int(time.time() * 1000)
         # Created an hour ago, but messages must be at least a day old
@@ -214,6 +239,30 @@ class TestSelectRandomMessage:
         )
         assert channel.history_calls
         assert all(window[0] <= call <= window[1] for call in channel.history_calls)
+
+    @pytest.mark.asyncio
+    async def test_history_is_bounded_by_minimum_message_age(self, mock_discord_message):
+        messages = make_messages(mock_discord_message, 10, interesting_ids={3})
+        channel = MockChannel(messages=messages)
+
+        await MessageSelector().select_random_message(as_guild(channel))
+
+        # The batch must not be allowed to run past the minimum-age cutoff
+        cutoff_ms = int(time.time() * 1000) - Config.MIN_MESSAGE_AGE_HOURS * 60 * 60 * 1000
+        assert channel.before_calls
+        assert all(abs(snowflake_to_timestamp_ms(before) - cutoff_ms) < 1000 for before in channel.before_calls)
+
+    @pytest.mark.asyncio
+    async def test_falls_back_when_channel_becomes_unreadable(self, mock_discord_message):
+        # Only interesting message was used recently, then the bot loses access to
+        # the guild's only channel. The already-fetched fallback should still be used.
+        messages = make_messages(mock_discord_message, 10, interesting_ids={4})
+        channel = MockChannel(messages=messages, forbidden_after=1)
+
+        result = await MessageSelector().select_random_message(as_guild(channel), exclude_message_ids={"4"})
+
+        assert result is not None
+        assert result[0].id == 4
 
     @pytest.mark.asyncio
     async def test_skips_recently_used_messages(self, mock_discord_message):

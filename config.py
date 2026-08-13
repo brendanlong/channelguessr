@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     message_search_limit: int = Field(default=100, alias="MESSAGE_SEARCH_LIMIT")
     max_search_retries: int = Field(default=5, alias="MAX_SEARCH_RETRIES")
     lookback_days: int = Field(default=365, alias="LOOKBACK_DAYS")
+    # How many recent rounds' target messages to avoid reusing
+    recent_message_memory: int = Field(default=100, alias="RECENT_MESSAGE_MEMORY")
 
     # Message filtering
     min_message_length: int = Field(default=200, alias="MIN_MESSAGE_LENGTH")
@@ -53,4 +55,5 @@ class Config:
     MESSAGE_SEARCH_LIMIT = settings.message_search_limit
     MAX_SEARCH_RETRIES = settings.max_search_retries
     LOOKBACK_DAYS = settings.lookback_days
+    RECENT_MESSAGE_MEMORY = settings.recent_message_memory
     MIN_MESSAGE_LENGTH = settings.min_message_length

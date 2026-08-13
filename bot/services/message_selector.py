@@ -4,16 +4,20 @@ import logging
 import random
 import re
 import time
+from collections.abc import Container
 
 import discord
 
 from config import Config
-from utils.snowflake import timestamp_ms_to_snowflake
+from utils.snowflake import snowflake_to_timestamp_ms, timestamp_ms_to_snowflake
 
 logger = logging.getLogger(__name__)
 
 # URL pattern for detecting links
 URL_PATTERN = re.compile(r"https?://\S+")
+
+# A batch with fewer messages than this is too sparse to sample from fairly
+MIN_BATCH_SIZE = 5
 
 
 def is_interesting_message(message: discord.Message) -> bool:
@@ -48,8 +52,17 @@ def is_interesting_message(message: discord.Message) -> bool:
 class MessageSelector:
     """Service for selecting random messages from guild history."""
 
-    async def select_random_message(self, guild: discord.Guild) -> tuple[discord.Message, discord.TextChannel] | None:
+    async def select_random_message(
+        self,
+        guild: discord.Guild,
+        exclude_message_ids: Container[str] | None = None,
+    ) -> tuple[discord.Message, discord.TextChannel] | None:
         """Select a random interesting message from the guild's history.
+
+        Args:
+            guild: The guild to search.
+            exclude_message_ids: Message IDs to avoid (e.g. recently used targets).
+                These are only used as a last resort if nothing else is found.
 
         Returns a tuple of (message, channel) if found, or None if no
         suitable message could be found after all retries.
@@ -61,18 +74,32 @@ class MessageSelector:
             logger.warning(f"No readable text channels in guild {guild.id}")
             return None
 
+        excluded = exclude_message_ids if exclude_message_ids is not None else ()
+
         # Calculate time bounds
         now_ms = int(time.time() * 1000)
         min_age_ms = Config.MIN_MESSAGE_AGE_HOURS * 60 * 60 * 1000
         max_timestamp_ms = now_ms - min_age_ms
         min_timestamp_ms = now_ms - (Config.LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
 
+        # Best candidate that was excluded as recently used, in case we find nothing else
+        fallback: tuple[discord.Message, discord.TextChannel] | None = None
+
         for attempt in range(Config.MAX_SEARCH_RETRIES):
             # Pick a random channel
             channel = random.choice(readable_channels)
 
+            # Narrow the search window to when this channel was actually active, so
+            # that timestamps before the channel existed don't all collapse onto its
+            # oldest messages
+            bounds = self._channel_search_bounds(channel, min_timestamp_ms, max_timestamp_ms)
+            if bounds is None:
+                logger.info(f"Channel #{channel.name} has no history in the search window, retrying...")
+                continue
+            channel_min_ms, channel_max_ms = bounds
+
             # Generate random timestamp in range
-            random_timestamp_ms = random.randint(min_timestamp_ms, max_timestamp_ms)
+            random_timestamp_ms = random.randint(channel_min_ms, channel_max_ms)
             after_snowflake = timestamp_ms_to_snowflake(random_timestamp_ms)
 
             logger.info(
@@ -90,19 +117,34 @@ class MessageSelector:
                     messages.append(msg)
 
                 # If we got very few messages, this channel/time is too sparse
-                if len(messages) < 5:
+                if len(messages) < MIN_BATCH_SIZE:
                     logger.info(
                         f"Channel #{channel.name} too sparse at this time ({len(messages)} messages found), retrying..."
                     )
                     continue
 
-                # Find the first interesting message
-                for msg in messages:
-                    if is_interesting_message(msg):
-                        logger.info(f"Selected message {msg.id} from #{channel.name} on attempt {attempt + 1}")
-                        return (msg, channel)
+                # Pick uniformly from every interesting message in the batch. Taking
+                # the *first* one instead would weight each message by how long the
+                # channel was quiet before it, which heavily favors the same handful
+                # of post-lull messages.
+                interesting = [msg for msg in messages if is_interesting_message(msg)]
+                candidates = [msg for msg in interesting if str(msg.id) not in excluded]
 
-                logger.info(f"No interesting messages in batch of {len(messages)} from #{channel.name}, retrying...")
+                if candidates:
+                    chosen = random.choice(candidates)
+                    logger.info(
+                        f"Selected message {chosen.id} from #{channel.name} "
+                        f"({len(candidates)} candidates) on attempt {attempt + 1}"
+                    )
+                    return (chosen, channel)
+
+                if interesting and fallback is None:
+                    fallback = (random.choice(interesting), channel)
+                    logger.info(f"All {len(interesting)} candidates in #{channel.name} used recently, retrying...")
+                else:
+                    logger.info(
+                        f"No interesting messages in batch of {len(messages)} from #{channel.name}, retrying..."
+                    )
 
             except discord.Forbidden:
                 logger.warning(f"Lost permission to read channel #{channel.name}")
@@ -114,8 +156,32 @@ class MessageSelector:
                 logger.warning(f"HTTP error fetching history: {e}")
                 continue
 
+        if fallback is not None:
+            logger.info(f"Falling back to recently used message {fallback[0].id} from #{fallback[1].name}")
+            return fallback
+
         logger.warning(f"Failed to find interesting message after {Config.MAX_SEARCH_RETRIES} attempts")
         return None
+
+    def _channel_search_bounds(
+        self, channel: discord.TextChannel, min_timestamp_ms: int, max_timestamp_ms: int
+    ) -> tuple[int, int] | None:
+        """Clamp the global search window to a channel's own lifespan.
+
+        Both bounds come from snowflakes already cached on the channel object, so
+        this costs no API calls. Returns None if the channel has no history that
+        overlaps the search window.
+        """
+        created_ms = int(channel.created_at.timestamp() * 1000)
+        start_ms = max(min_timestamp_ms, created_ms)
+
+        end_ms = max_timestamp_ms
+        if channel.last_message_id is not None:
+            end_ms = min(end_ms, snowflake_to_timestamp_ms(channel.last_message_id))
+
+        if start_ms > end_ms:
+            return None
+        return (start_ms, end_ms)
 
     def _get_readable_channels(self, guild: discord.Guild) -> list[discord.TextChannel]:
         """Get list of text channels the bot can read."""

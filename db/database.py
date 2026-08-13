@@ -127,6 +127,24 @@ class Database:
         )
         return GameRound(**dict(row)) if row else None
 
+    async def get_recent_target_message_ids(self, guild_id: str, limit: int) -> set[str]:
+        """Get the target message IDs of the most recent rounds in a guild.
+
+        Used to avoid showing players the same message again too soon.
+        """
+        if limit <= 0:
+            return set()
+        rows = await self.fetch_all(
+            """
+            SELECT target_message_id FROM game_rounds
+            WHERE guild_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        return {row["target_message_id"] for row in rows}
+
     async def end_round(self, round_id: int, status: str = "completed") -> None:
         """End a game round and clear the timer."""
         await self.execute(

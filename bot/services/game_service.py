@@ -220,7 +220,9 @@ class GameService:
             timeout_seconds=timeout,
         )
 
-        await channel.send(game_text)
+        # The round text quotes arbitrary user content (and link-preview titles
+        # written by whoever owns the linked site), so nothing in it may ping
+        await channel.send(game_text, allowed_mentions=discord.AllowedMentions.none())
         logger.info(f"Round {round_id} started successfully")
 
         # Start timeout timer
@@ -336,7 +338,11 @@ class GameService:
             guild=guild,
         )
 
-        await channel.send(results_text)
+        # Players who guessed are pinged deliberately; nothing else may be
+        await channel.send(
+            results_text,
+            allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True),
+        )
         logger.info(f"Round {round_id} ended, results posted")
 
     async def submit_guess(

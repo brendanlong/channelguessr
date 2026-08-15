@@ -16,6 +16,9 @@ def mock_attachment():
             self.filename = filename
             self.description = description
 
+        def is_spoiler(self):
+            return self.filename.startswith("SPOILER_")
+
     return MockAttachment
 
 
@@ -30,10 +33,10 @@ def mock_embed():
             self.name = name
 
     class MockEmbed:
-        def __init__(self, title=None, description=None, url=None, author_name=None, provider_name=None):
+        def __init__(self, title=None, description=None, author_name=None, provider_name=None, embed_type="link"):
             self.title = title
             self.description = description
-            self.url = url
+            self.type = embed_type
             self.author = MockEmbedProxy(author_name)
             self.provider = MockEmbedProxy(provider_name)
 

@@ -85,6 +85,26 @@ class TestFormatGameMessage:
         # Target should always be present
         assert unique_target in result
 
+    def test_marker_heavy_round_fits_limit(self, mock_discord_message, mock_attachment, mock_embed):
+        """Markers make each line longer; the round must still fit Discord's limit."""
+
+        def loaded(author_id):
+            return mock_discord_message(
+                content="Y" * 2000,
+                author_id=author_id,
+                attachments=[
+                    mock_attachment(content_type="image/png", filename="a-descriptive-name.png", description="z" * 500)
+                    for _ in range(10)
+                ],
+                embeds=[mock_embed(title="W" * 500) for _ in range(5)],
+            )
+
+        result = format_game_message(
+            loaded(1), [loaded(i) for i in range(2, 7)], [loaded(i) for i in range(7, 12)], 1, 60
+        )
+
+        assert len(result) <= DISCORD_MAX_LENGTH
+
 
 class TestAttachmentMarkers:
     """Tests for how attachments are described in the message display."""
@@ -118,15 +138,35 @@ class TestAttachmentMarkers:
 
     def test_generic_filenames_are_dropped(self, mock_discord_message, mock_attachment):
         """Auto-generated filenames say nothing, so they're left off."""
-        for filename in ["image.png", "unknown.png", "IMG_12.jpg", "Screenshot at.png", "SPOILER_video.mp4"]:
+        for filename in ["image.png", "unknown.png", "IMG_12.jpg", "Screenshot at.png", "p.png", "1.png"]:
             message = mock_discord_message(attachments=[mock_attachment(content_type="image/png", filename=filename)])
             assert format_message_content(message, "User A").endswith("[image]"), filename
 
     def test_dated_filenames_are_dropped(self, mock_discord_message, mock_attachment):
         """Filenames with timestamps would give away when the message was posted."""
-        for filename in ["Screenshot 2026-08-14 at 3.42.01 PM.png", "PXL_20240101_123456.jpg", "vacation-2019.png"]:
+        dated = [
+            "Screenshot 2026-08-14 at 3.42.01 PM.png",
+            "PXL_20240101_123456.jpg",
+            "vacation-2019.png",
+            "vacation-8-14-26.jpg",
+            "screen shot aug 14.png",
+        ]
+        for filename in dated:
             message = mock_discord_message(attachments=[mock_attachment(content_type="image/png", filename=filename)])
             assert format_message_content(message, "User A").endswith("[image]"), filename
+
+    def test_spoilers_are_not_described(self, mock_discord_message, mock_attachment):
+        """A poster who hid an image doesn't get it described in the round."""
+        attachment = mock_attachment(
+            content_type="image/png",
+            filename="SPOILER_ending-explained.png",
+            description="the killer's identity",
+        )
+        result = format_message_content(mock_discord_message(attachments=[attachment]), "User A")
+
+        assert result.endswith("[spoiler image]")
+        assert "ending" not in result
+        assert "killer" not in result
 
     def test_label_is_sanitized(self, mock_discord_message, mock_attachment):
         """Untrusted labels can't ping, embed, or break out of the quote block."""
@@ -141,12 +181,52 @@ class TestAttachmentMarkers:
         assert "<https://example.com>" in result
         assert "(note)" in result
 
+    def test_label_cannot_ping_everyone(self, mock_discord_message, mock_attachment):
+        """A link preview title is written by whoever owns the site, not the poster.
+
+        The backticks are belt-and-braces; the round is also sent with
+        allowed_mentions=none, which is what actually stops the ping.
+        """
+        attachment = mock_attachment(content_type="image/png", description="hey @everyone and @here")
+        result = format_message_content(mock_discord_message(attachments=[attachment]), "User A")
+
+        assert "`@everyone`" in result
+        assert "`@here`" in result
+
+    def test_label_markdown_is_escaped(self, mock_discord_message, mock_attachment, mock_embed):
+        """An unclosed backtick would otherwise swallow the markers after it."""
+        message = mock_discord_message(
+            attachments=[mock_attachment(content_type="image/png", description="a ` and **bold**")],
+            embeds=[mock_embed(title="Cats")],
+        )
+        result = format_message_content(message, "User A")
+
+        assert "\\`" in result
+        assert result.endswith("[embed: Cats]")
+
+    def test_whitespace_only_label_falls_back(self, mock_discord_message, mock_attachment):
+        """A label that cleans down to nothing shouldn't render as `[image: ]`."""
+        attachment = mock_attachment(content_type="image/png", description="   ")
+        result = format_message_content(mock_discord_message(attachments=[attachment]), "User A")
+
+        assert result.endswith("[image]")
+
     def test_long_label_is_truncated(self, mock_discord_message, mock_attachment):
         """A rambling alt text can't crowd out the rest of the round."""
         attachment = mock_attachment(content_type="image/png", description="z" * 500)
         result = format_message_content(mock_discord_message(attachments=[attachment]), "User A")
 
         assert len(result) < MAX_LABEL_LENGTH + 50
+
+    def test_truncated_url_cannot_embed(self, mock_discord_message, mock_attachment):
+        """Cutting a label after wrapping URLs would leave an unclosed bracket."""
+        attachment = mock_attachment(
+            content_type="image/png",
+            description="see https://example.com/a-very-long-path-that-goes-on-and-on-forever",
+        )
+        label = format_message_content(mock_discord_message(attachments=[attachment]), "User A").split("**", 2)[2]
+
+        assert label.count("<") == label.count(">")
 
     def test_attachments_can_be_excluded(self, mock_discord_message, mock_attachment):
         """include_attachments=False leaves attachment markers off entirely."""
@@ -161,6 +241,17 @@ class TestAttachmentMarkers:
 
         assert result.count("[image]") == 4
         assert "[+6 more]" in result
+
+    def test_attachments_do_not_crowd_out_embeds(self, mock_discord_message, mock_attachment, mock_embed):
+        """The embed title is usually the best clue, so images can't take its slot."""
+        message = mock_discord_message(
+            attachments=[mock_attachment(content_type="image/png") for _ in range(6)],
+            embeds=[mock_embed(title="Important Article")],
+        )
+        result = format_message_content(message, "User A")
+
+        assert "[+2 more]" in result
+        assert result.endswith("[embed: Important Article]")
 
 
 class TestEmbedMarkers:
@@ -187,6 +278,29 @@ class TestEmbedMarkers:
         message = mock_discord_message(embeds=[mock_embed()])
 
         assert format_message_content(message, "User A").endswith("[embed]")
+
+    def test_bot_authored_embeds_are_not_described(self, mock_discord_message, mock_embed):
+        """Rich embeds are bot metadata, which routinely names a date or channel."""
+        embed = mock_embed(title="Daily Digest - August 14, 2026", embed_type="rich")
+        message = mock_discord_message(embeds=[embed])
+
+        result = format_message_content(message, "User A")
+        assert result.endswith("[embed]")
+        assert "August" not in result
+
+    def test_missing_embed_fields_read_as_none(self):
+        """Pin the discord.py contract our fallback chain relies on."""
+        import discord
+
+        embed = discord.Embed()
+        assert embed.title is None
+        assert embed.author.name is None
+        assert embed.provider.name is None
+
+        from_payload = discord.Embed.from_dict({"type": "link", "provider": {"name": "Tenor"}})
+        assert from_payload.title is None
+        assert from_payload.author.name is None
+        assert from_payload.provider.name == "Tenor"
 
     def test_content_and_markers_combine(self, mock_discord_message, mock_attachment, mock_embed):
         """Text, attachments and embeds all appear on one line."""
@@ -276,11 +390,17 @@ class TestEscapeMentions:
         result = escape_mentions(text, guild)
         assert result == "Hey `@Alice`, `@Bob`, `@user`, and `@Admins`!"
 
-    def test_channel_mentions_not_escaped(self):
-        """Channel mentions (<#id>) should not be modified."""
-        text = "Check out <#123456789>!"
-        result = escape_mentions(text, None)
-        assert result == "Check out <#123456789>!"
+    def test_channel_mentions_are_anonymized(self):
+        """A live channel link in the round would hand players the answer."""
+        result = escape_mentions("Check out <#123456789>!", None)
+
+        assert result == "Check out `#channel`!"
+
+    def test_everyone_mentions_are_defused(self):
+        """@everyone/@here aren't <> mentions, so they need their own escaping."""
+        result = escape_mentions("hey @everyone @here", None)
+
+        assert result == "hey `@everyone` `@here`"
 
 
 class TestFormatTimeWarning:

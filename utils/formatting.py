@@ -14,12 +14,80 @@ from utils.discord_utils import get_or_fetch_member
 # URL pattern for detecting links
 URL_PATTERN = re.compile(r"https?://\S+")
 
-# Discord mention patterns (user and role mentions)
+# Discord mention patterns (user, role and channel mentions)
 USER_MENTION_PATTERN = re.compile(r"<@!?(\d+)>")
 ROLE_MENTION_PATTERN = re.compile(r"<@&(\d+)>")
+CHANNEL_MENTION_PATTERN = re.compile(r"<#(\d+)>")
+
+# @everyone/@here aren't <> mentions, so they need separate defusing
+EVERYONE_MENTION_PATTERN = re.compile(r"@(everyone|here)")
 
 # Discord message limit
 DISCORD_MAX_LENGTH = 2000
+
+# How much of a message's own text we show
+MAX_CONTENT_LENGTH = 500
+
+# How much of an attachment/embed description we show. Short, because a message
+# can carry several of them and they're only meant to be a hint.
+MAX_LABEL_LENGTH = 60
+
+# A message can carry ten attachments plus link previews; describing them all
+# would crowd out the rest of the round, so the tail is summarized as a count.
+# Applied to attachments and embeds separately, because an embed title is
+# usually the most useful clue on the message and shouldn't lose its slot to a
+# pile of images.
+MAX_MARKERS = 4
+
+# Embed types Discord generates itself from a link in the message. Anything
+# else ("rich") was authored by a bot or webhook, and its title is auto-built
+# metadata — "Daily digest for August 14" or "Message pinned in #general" —
+# which is exactly the kind of thing that gives the round away, so those keep a
+# bare marker.
+AUTO_EMBED_TYPES = frozenset({"article", "gifv", "image", "link", "video"})
+
+# Minimum letters in a filename before it's worth showing ("p.png" isn't)
+MIN_FILENAME_LETTERS = 3
+
+# Filenames Discord or a phone camera made up, which say nothing about the
+# message. Compared against the stem with everything but letters stripped, so
+# "IMG_12" and "Screenshot at" collapse into this set too.
+GENERIC_FILENAME_STEMS = frozenset(
+    {
+        "attachment",
+        "clipboard",
+        "download",
+        "dsc",
+        "file",
+        "gif",
+        "image",
+        "img",
+        "mov",
+        "paste",
+        "pastedimage",
+        "photo",
+        "pxl",
+        "screenshot",
+        "screenshotat",
+        "unknown",
+        "untitled",
+        "vid",
+        "video",
+    }
+)
+
+# Dates and timestamps in a filename would give away the round's
+# when-was-this-posted half, so any filename that looks like it carries one is
+# dropped: a run of four digits ("IMG_20240101_123456", "Screenshot 2026-08-14
+# at 3.42 PM"), a separated numeric date ("vacation-8-14-26"), or a month name
+# next to a number ("screen shot aug 14"). This over-rejects — "blade-runner-2049"
+# is a casualty — but a spoiled round costs more than a missing hint.
+FILENAME_DATE_PATTERN = re.compile(
+    r"\d{4}"
+    r"|\d{1,2}[-_. /]\d{1,2}[-_. /]\d{2,4}"
+    r"|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[-_. /]*\d",
+    re.IGNORECASE,
+)
 
 
 def suppress_url_embeds(text: str) -> str:
@@ -32,6 +100,10 @@ def escape_mentions(text: str, guild: discord.Guild | None) -> str:
 
     Resolves user mentions to `@username` format and role mentions to
     `@rolename` format, wrapped in backticks to prevent pinging.
+
+    Channel mentions are replaced with a nameless `#channel` rather than
+    resolved: an unescaped `<#id>` renders as a live channel link, and a message
+    saying "cross-posting this from #wherever" would hand players the answer.
     """
 
     def replace_user_mention(match: re.Match[str]) -> str:
@@ -52,6 +124,8 @@ def escape_mentions(text: str, guild: discord.Guild | None) -> str:
 
     text = USER_MENTION_PATTERN.sub(replace_user_mention, text)
     text = ROLE_MENTION_PATTERN.sub(replace_role_mention, text)
+    text = CHANNEL_MENTION_PATTERN.sub("`#channel`", text)
+    text = EVERYONE_MENTION_PATTERN.sub(r"`@\g<1>`", text)
     return text
 
 
@@ -70,6 +144,94 @@ def anonymize_usernames(
     }
 
 
+def _truncate(text: str, max_length: int) -> str:
+    """Shorten text to max_length, marking it with an ellipsis if cut."""
+    if len(text) <= max_length:
+        return text
+    return text[: max_length - 3] + "..."
+
+
+def _clean_label(text: str, guild: discord.Guild | None) -> str:
+    """Make untrusted text safe to drop inline in the quoted message display.
+
+    Returns an empty string if nothing legible survives.
+    """
+    # Collapse newlines so a multi-line description can't escape the blockquote
+    text = " ".join(text.split())
+    # Truncate first: cutting after the escaping below could leave a half-written
+    # `<https://...` whose missing bracket lets Discord embed the link anyway
+    text = _truncate(text, MAX_LABEL_LENGTH)
+    # Markdown would otherwise leak out of the label; an unclosed backtick in an
+    # alt text swallows the markers that follow it
+    text = discord.utils.escape_markdown(text)
+    text = escape_mentions(text, guild)
+    text = suppress_url_embeds(text)
+    # Brackets would be confused with our own [image]/[embed] markers
+    text = text.replace("[", "(").replace("]", ")")
+    return text.strip()
+
+
+def _filename_label(filename: str) -> str | None:
+    """Describe an attachment by its filename, or None if it says nothing useful."""
+    stem = filename.rsplit(".", 1)[0]
+    if FILENAME_DATE_PATTERN.search(stem):
+        return None
+    letters = re.sub(r"[^a-z]", "", stem.lower())
+    if len(letters) < MIN_FILENAME_LETTERS or letters in GENERIC_FILENAME_STEMS:
+        return None
+    return stem
+
+
+def _capped(markers: list[str]) -> list[str]:
+    """Trim a marker list to MAX_MARKERS, summarizing the rest as a count."""
+    if len(markers) <= MAX_MARKERS:
+        return markers
+    return markers[:MAX_MARKERS] + [f"[+{len(markers) - MAX_MARKERS} more]"]
+
+
+def _describe_attachment(attachment: discord.Attachment, guild: discord.Guild | None) -> str:
+    """Build the display marker for one attachment, e.g. `[image: a cat]`."""
+    content_type = attachment.content_type or ""
+    if content_type.startswith("image/"):
+        kind = "image"
+    elif content_type.startswith("video/"):
+        kind = "video"
+    elif content_type.startswith("audio/"):
+        kind = "audio"
+    elif content_type:
+        kind = "file"
+    else:
+        kind = "attachment"
+
+    # The poster hid this on purpose, so don't describe it
+    if attachment.is_spoiler():
+        return f"[spoiler {kind}]"
+
+    # Alt text is written by the poster, so it beats the filename when present
+    raw_label = attachment.description or _filename_label(attachment.filename)
+    label = _clean_label(raw_label, guild) if raw_label else ""
+    if not label:
+        return f"[{kind}]"
+    return f"[{kind}: {label}]"
+
+
+def _describe_embed(embed: discord.Embed, guild: discord.Guild | None) -> str:
+    """Build the display marker for one embed, e.g. `[embed: Article title]`.
+
+    Link previews carry the only description of a link-only message, so showing
+    the title (or whatever stands in for it) is often the difference between a
+    guessable round and a blank one.
+    """
+    if embed.type not in AUTO_EMBED_TYPES:
+        return "[embed]"
+
+    raw_label = embed.title or embed.author.name or embed.provider.name or embed.description
+    label = _clean_label(raw_label, guild) if raw_label else ""
+    if not label:
+        return "[embed]"
+    return f"[embed: {label}]"
+
+
 def format_message_content(
     message: discord.Message,
     anonymized_name: str,
@@ -84,32 +246,15 @@ def format_message_content(
     # Suppress URL embeds by wrapping in angle brackets
     content = suppress_url_embeds(content)
 
-    # Add attachment indicators
-    if include_attachments and message.attachments:
-        attachment_types = []
-        for attachment in message.attachments:
-            if attachment.content_type:
-                if attachment.content_type.startswith("image/"):
-                    attachment_types.append("[image]")
-                elif attachment.content_type.startswith("video/"):
-                    attachment_types.append("[video]")
-                else:
-                    attachment_types.append("[file]")
-            else:
-                attachment_types.append("[attachment]")
-        if attachment_types:
-            content = f"{content} {' '.join(attachment_types)}".strip()
+    # Truncate before adding the markers below, so a wall of text can't push
+    # them out of the display entirely
+    parts = [_truncate(content, MAX_CONTENT_LENGTH)] if content else []
 
-    # Add embed indicators
-    if message.embeds:
-        content = f"{content} [embed]".strip()
+    if include_attachments:
+        parts.extend(_capped([_describe_attachment(attachment, message.guild) for attachment in message.attachments]))
+    parts.extend(_capped([_describe_embed(embed, message.guild) for embed in message.embeds]))
 
-    # Truncate very long messages
-    max_length = 500
-    if len(content) > max_length:
-        content = content[: max_length - 3] + "..."
-
-    return f"> **{anonymized_name}:** {content}"
+    return f"> **{anonymized_name}:** {' '.join(parts).strip()}".rstrip()
 
 
 def format_game_message(

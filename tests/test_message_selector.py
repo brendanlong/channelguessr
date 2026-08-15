@@ -91,6 +91,7 @@ class MockChannel:
         created_ms=None,
         last_message_ms=None,
         forbidden_after=None,
+        empty=False,
     ):
         self.name = name
         self.id = 999
@@ -99,7 +100,11 @@ class MockChannel:
         now_ms = int(time.time() * 1000)
         created_ms = created_ms if created_ms is not None else now_ms - 400 * DAY_MS
         self.created_at = datetime.fromtimestamp(created_ms / 1000, tz=timezone.utc)
-        self.last_message_id = timestamp_ms_to_snowflake(last_message_ms) if last_message_ms is not None else None
+        # `empty` models a channel nobody has ever posted in, where Discord
+        # reports last_message_id as None
+        if last_message_ms is None:
+            last_message_ms = now_ms - 2 * DAY_MS
+        self.last_message_id = None if empty else timestamp_ms_to_snowflake(last_message_ms)
         self.history_calls = []
         self.before_calls = []
 
@@ -192,10 +197,19 @@ class TestChannelSearchBounds:
             is None
         )
 
+    def test_returns_none_for_channel_with_no_messages(self):
+        now_ms = int(time.time() * 1000)
+        channel = MockChannel(empty=True)
+
+        assert (
+            MessageSelector()._channel_search_bounds(as_channel(channel), now_ms - 365 * DAY_MS, now_ms - DAY_MS)
+            is None
+        )
+
     def test_returns_none_when_channel_is_newer_than_window(self):
         now_ms = int(time.time() * 1000)
         # Created an hour ago, but messages must be at least a day old
-        channel = MockChannel(created_ms=now_ms - 60 * 60 * 1000)
+        channel = MockChannel(created_ms=now_ms - 60 * 60 * 1000, last_message_ms=now_ms - 30 * 60 * 1000)
 
         assert (
             MessageSelector()._channel_search_bounds(as_channel(channel), now_ms - 365 * DAY_MS, now_ms - DAY_MS)
@@ -251,6 +265,32 @@ class TestSelectRandomMessage:
         cutoff_ms = int(time.time() * 1000) - Config.MIN_MESSAGE_AGE_HOURS * 60 * 60 * 1000
         assert channel.before_calls
         assert all(abs(snowflake_to_timestamp_ms(before) - cutoff_ms) < 1000 for before in channel.before_calls)
+
+    @pytest.mark.asyncio
+    async def test_empty_channels_never_consume_retries(self, mock_discord_message):
+        # A guild full of channels nobody has ever posted in, plus one real one.
+        # The empty ones must not be probed at all, or they'd exhaust the retries.
+        empty = [MockChannel(name=f"empty-{i}", empty=True) for i in range(10)]
+        real = MockChannel(name="general", messages=make_messages(mock_discord_message, 10, interesting_ids={7}))
+
+        for _ in range(20):
+            result = await MessageSelector().select_random_message(as_guild(*empty, real))
+            assert result is not None
+            assert result[0].id == 7
+
+        assert all(not channel.history_calls for channel in empty)
+
+    @pytest.mark.asyncio
+    async def test_prefers_fresh_candidate_over_fallback_from_another_channel(self, mock_discord_message, monkeypatch):
+        # Enough retries that both channels are near-certain to be tried
+        monkeypatch.setattr(Config, "MAX_SEARCH_RETRIES", 30)
+        used = MockChannel(name="used", messages=make_messages(mock_discord_message, 10, interesting_ids={2}))
+        fresh = MockChannel(name="fresh", messages=make_messages(mock_discord_message, 10, interesting_ids={6}))
+
+        for _ in range(20):
+            result = await MessageSelector().select_random_message(as_guild(used, fresh), exclude_message_ids={"2"})
+            assert result is not None
+            assert result[0].id == 6
 
     @pytest.mark.asyncio
     async def test_falls_back_when_channel_becomes_unreadable(self, mock_discord_message):

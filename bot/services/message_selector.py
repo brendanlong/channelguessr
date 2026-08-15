@@ -86,7 +86,8 @@ class MessageSelector:
             logger.warning(f"No readable channels with history in the search window in guild {guild.id}")
             return None
 
-        # Best candidate that was excluded as recently used, in case we find nothing else
+        # First message we had to reject as recently used, kept in case every
+        # attempt comes up empty
         fallback: tuple[discord.Message, discord.TextChannel] | None = None
 
         for attempt in range(Config.MAX_SEARCH_RETRIES):
@@ -189,12 +190,14 @@ class MessageSelector:
         this costs no API calls. Returns None if the channel has no history that
         overlaps the search window.
         """
+        # Discord never rewinds last_message_id, even when that message is
+        # deleted, so None means nothing has ever been posted here
+        if channel.last_message_id is None:
+            return None
+
         created_ms = int(channel.created_at.timestamp() * 1000)
         start_ms = max(min_timestamp_ms, created_ms)
-
-        end_ms = max_timestamp_ms
-        if channel.last_message_id is not None:
-            end_ms = min(end_ms, snowflake_to_timestamp_ms(channel.last_message_id))
+        end_ms = min(max_timestamp_ms, snowflake_to_timestamp_ms(channel.last_message_id))
 
         if start_ms > end_ms:
             return None

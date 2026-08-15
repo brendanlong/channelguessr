@@ -3,9 +3,11 @@
 from models import PlayerScore
 from utils.formatting import (
     DISCORD_MAX_LENGTH,
+    MAX_LABEL_LENGTH,
     escape_mentions,
     format_game_message,
     format_leaderboard,
+    format_message_content,
     format_time_warning,
 )
 
@@ -82,6 +84,125 @@ class TestFormatGameMessage:
 
         # Target should always be present
         assert unique_target in result
+
+
+class TestAttachmentMarkers:
+    """Tests for how attachments are described in the message display."""
+
+    def test_kind_from_content_type(self, mock_discord_message, mock_attachment):
+        """Attachments are labelled by their broad media type."""
+        cases = [
+            ("image/png", "[image]"),
+            ("video/mp4", "[video]"),
+            ("audio/ogg", "[audio]"),
+            ("application/pdf", "[file]"),
+            (None, "[attachment]"),
+        ]
+        for content_type, expected in cases:
+            message = mock_discord_message(attachments=[mock_attachment(content_type=content_type)])
+            assert format_message_content(message, "User A").endswith(expected)
+
+    def test_alt_text_is_shown(self, mock_discord_message, mock_attachment):
+        """Poster-written alt text is the best description we have."""
+        attachment = mock_attachment(content_type="image/png", filename="IMG_4821.png", description="a very smug cat")
+        message = mock_discord_message(attachments=[attachment])
+
+        assert "[image: a very smug cat]" in format_message_content(message, "User A")
+
+    def test_informative_filename_is_shown(self, mock_discord_message, mock_attachment):
+        """A filename someone chose deliberately is worth showing."""
+        attachment = mock_attachment(content_type="image/png", filename="deployment-diagram.png")
+        message = mock_discord_message(attachments=[attachment])
+
+        assert "[image: deployment-diagram]" in format_message_content(message, "User A")
+
+    def test_generic_filenames_are_dropped(self, mock_discord_message, mock_attachment):
+        """Auto-generated filenames say nothing, so they're left off."""
+        for filename in ["image.png", "unknown.png", "IMG_12.jpg", "Screenshot at.png", "SPOILER_video.mp4"]:
+            message = mock_discord_message(attachments=[mock_attachment(content_type="image/png", filename=filename)])
+            assert format_message_content(message, "User A").endswith("[image]"), filename
+
+    def test_dated_filenames_are_dropped(self, mock_discord_message, mock_attachment):
+        """Filenames with timestamps would give away when the message was posted."""
+        for filename in ["Screenshot 2026-08-14 at 3.42.01 PM.png", "PXL_20240101_123456.jpg", "vacation-2019.png"]:
+            message = mock_discord_message(attachments=[mock_attachment(content_type="image/png", filename=filename)])
+            assert format_message_content(message, "User A").endswith("[image]"), filename
+
+    def test_label_is_sanitized(self, mock_discord_message, mock_attachment):
+        """Untrusted labels can't ping, embed, or break out of the quote block."""
+        attachment = mock_attachment(
+            content_type="image/png",
+            description="ping <@99>\nvia https://example.com [note]",
+        )
+        result = format_message_content(mock_discord_message(attachments=[attachment]), "User A")
+
+        assert "<@99>" not in result
+        assert "\n" not in result
+        assert "<https://example.com>" in result
+        assert "(note)" in result
+
+    def test_long_label_is_truncated(self, mock_discord_message, mock_attachment):
+        """A rambling alt text can't crowd out the rest of the round."""
+        attachment = mock_attachment(content_type="image/png", description="z" * 500)
+        result = format_message_content(mock_discord_message(attachments=[attachment]), "User A")
+
+        assert len(result) < MAX_LABEL_LENGTH + 50
+
+    def test_attachments_can_be_excluded(self, mock_discord_message, mock_attachment):
+        """include_attachments=False leaves attachment markers off entirely."""
+        message = mock_discord_message(attachments=[mock_attachment(content_type="image/png")])
+
+        assert format_message_content(message, "User A", include_attachments=False) == "> **User A:**"
+
+    def test_many_attachments_are_summarized(self, mock_discord_message, mock_attachment):
+        """Beyond a handful, the tail becomes a count."""
+        attachments = [mock_attachment(content_type="image/png") for _ in range(10)]
+        result = format_message_content(mock_discord_message(attachments=attachments), "User A")
+
+        assert result.count("[image]") == 4
+        assert "[+6 more]" in result
+
+
+class TestEmbedMarkers:
+    """Tests for how embeds are described in the message display."""
+
+    def test_title_is_shown(self, mock_discord_message, mock_embed):
+        """The link preview title is often the only clue a link-only message has."""
+        message = mock_discord_message(embeds=[mock_embed(title="The Bad Place")])
+
+        assert "[embed: The Bad Place]" in format_message_content(message, "User A")
+
+    def test_falls_back_through_author_provider_description(self, mock_discord_message, mock_embed):
+        """Without a title, anything naming the content beats a bare marker."""
+        cases = [
+            (mock_embed(author_name="Some Blogger"), "[embed: Some Blogger]"),
+            (mock_embed(provider_name="Tenor"), "[embed: Tenor]"),
+            (mock_embed(description="A gif of a man falling over"), "[embed: A gif of a man falling over]"),
+        ]
+        for embed, expected in cases:
+            assert expected in format_message_content(mock_discord_message(embeds=[embed]), "User A")
+
+    def test_empty_embed_keeps_bare_marker(self, mock_discord_message, mock_embed):
+        """An embed with nothing to say still shows that something was there."""
+        message = mock_discord_message(embeds=[mock_embed()])
+
+        assert format_message_content(message, "User A").endswith("[embed]")
+
+    def test_content_and_markers_combine(self, mock_discord_message, mock_attachment, mock_embed):
+        """Text, attachments and embeds all appear on one line."""
+        message = mock_discord_message(
+            content="look at this",
+            attachments=[mock_attachment(content_type="image/png", description="a cat")],
+            embeds=[mock_embed(title="Cats")],
+        )
+
+        assert format_message_content(message, "User A") == "> **User A:** look at this [image: a cat] [embed: Cats]"
+
+    def test_markers_survive_long_content(self, mock_discord_message, mock_embed):
+        """Truncating a wall of text must not drop the markers after it."""
+        message = mock_discord_message(content="X" * 1000, embeds=[mock_embed(title="Cats")])
+
+        assert format_message_content(message, "User A").endswith("[embed: Cats]")
 
 
 class TestEscapeMentions:

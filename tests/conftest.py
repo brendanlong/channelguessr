@@ -7,12 +7,42 @@ import pytest
 
 
 @pytest.fixture
-def mock_discord_message():
-    """Create a mock Discord message for testing."""
+def mock_attachment():
+    """Create a mock Discord attachment for testing."""
 
     class MockAttachment:
-        def __init__(self, content_type=None):
+        def __init__(self, content_type=None, filename="file.bin", description=None):
             self.content_type = content_type
+            self.filename = filename
+            self.description = description
+
+    return MockAttachment
+
+
+@pytest.fixture
+def mock_embed():
+    """Create a mock Discord embed for testing."""
+
+    class MockEmbedProxy:
+        """Stands in for discord.py's EmbedProxy, where missing fields are None."""
+
+        def __init__(self, name=None):
+            self.name = name
+
+    class MockEmbed:
+        def __init__(self, title=None, description=None, url=None, author_name=None, provider_name=None):
+            self.title = title
+            self.description = description
+            self.url = url
+            self.author = MockEmbedProxy(author_name)
+            self.provider = MockEmbedProxy(provider_name)
+
+    return MockEmbed
+
+
+@pytest.fixture
+def mock_discord_message():
+    """Create a mock Discord message for testing."""
 
     class MockAuthor:
         def __init__(self, bot=False, user_id=12345):

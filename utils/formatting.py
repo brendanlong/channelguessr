@@ -21,6 +21,49 @@ ROLE_MENTION_PATTERN = re.compile(r"<@&(\d+)>")
 # Discord message limit
 DISCORD_MAX_LENGTH = 2000
 
+# How much of a message's own text we show
+MAX_CONTENT_LENGTH = 500
+
+# How much of an attachment/embed description we show. Short, because a message
+# can carry several of them and they're only meant to be a hint.
+MAX_LABEL_LENGTH = 60
+
+# A message can carry ten attachments plus link previews; describing them all
+# would crowd out the rest of the round, so the tail is summarized as a count
+MAX_MARKERS = 4
+
+# Filenames Discord or a phone camera made up, which say nothing about the
+# message. Compared against the stem with everything but letters stripped, so
+# "IMG_12" and "Screenshot at" collapse into this set too.
+GENERIC_FILENAME_STEMS = frozenset(
+    {
+        "attachment",
+        "clipboard",
+        "download",
+        "dsc",
+        "file",
+        "gif",
+        "image",
+        "img",
+        "mov",
+        "paste",
+        "pastedimage",
+        "photo",
+        "pxl",
+        "screenshot",
+        "screenshotat",
+        "unknown",
+        "untitled",
+        "vid",
+        "video",
+    }
+)
+
+# A run of digits in a filename is nearly always a date or timestamp
+# ("Screenshot 2026-08-14 at 3.42 PM", "IMG_20240101_123456"), which would give
+# away the round's when-was-this-posted half, so those filenames are dropped.
+FILENAME_DIGIT_RUN_PATTERN = re.compile(r"\d{4}")
+
 
 def suppress_url_embeds(text: str) -> str:
     """Wrap URLs in angle brackets to suppress Discord embeds."""
@@ -70,6 +113,68 @@ def anonymize_usernames(
     }
 
 
+def _truncate(text: str, max_length: int) -> str:
+    """Shorten text to max_length, marking it with an ellipsis if cut."""
+    if len(text) <= max_length:
+        return text
+    return text[: max_length - 3] + "..."
+
+
+def _clean_label(text: str, guild: discord.Guild | None) -> str:
+    """Make untrusted text safe to drop inline in the quoted message display."""
+    # Collapse newlines so a multi-line description can't escape the blockquote
+    text = " ".join(text.split())
+    text = escape_mentions(text, guild)
+    text = suppress_url_embeds(text)
+    # Brackets would be confused with our own [image]/[embed] markers
+    text = text.replace("[", "(").replace("]", ")")
+    return _truncate(text.strip(), MAX_LABEL_LENGTH)
+
+
+def _filename_label(filename: str) -> str | None:
+    """Describe an attachment by its filename, or None if it says nothing useful."""
+    stem = filename.removeprefix("SPOILER_").rsplit(".", 1)[0]
+    if FILENAME_DIGIT_RUN_PATTERN.search(stem):
+        return None
+    if re.sub(r"[^a-z]", "", stem.lower()) in GENERIC_FILENAME_STEMS:
+        return None
+    return stem
+
+
+def _describe_attachment(attachment: discord.Attachment, guild: discord.Guild | None) -> str:
+    """Build the display marker for one attachment, e.g. `[image: a cat]`."""
+    content_type = attachment.content_type or ""
+    if content_type.startswith("image/"):
+        kind = "image"
+    elif content_type.startswith("video/"):
+        kind = "video"
+    elif content_type.startswith("audio/"):
+        kind = "audio"
+    elif content_type:
+        kind = "file"
+    else:
+        kind = "attachment"
+
+    # Alt text is written by the poster, so it beats the filename when present
+    label = attachment.description or _filename_label(attachment.filename)
+    if not label:
+        return f"[{kind}]"
+    return f"[{kind}: {_clean_label(label, guild)}]"
+
+
+def _describe_embed(embed: discord.Embed, guild: discord.Guild | None) -> str:
+    """Build the display marker for one embed, e.g. `[embed: Article title]`.
+
+    Link previews carry the only description of a link-only message, so showing
+    the title (or whatever stands in for it) is often the difference between a
+    guessable round and a blank one.
+    """
+    label = embed.title or embed.author.name or embed.provider.name or embed.description
+    if not label:
+        return "[embed]"
+    return f"[embed: {_clean_label(label, guild)}]"
+
+
 def format_message_content(
     message: discord.Message,
     anonymized_name: str,
@@ -84,32 +189,21 @@ def format_message_content(
     # Suppress URL embeds by wrapping in angle brackets
     content = suppress_url_embeds(content)
 
-    # Add attachment indicators
-    if include_attachments and message.attachments:
-        attachment_types = []
-        for attachment in message.attachments:
-            if attachment.content_type:
-                if attachment.content_type.startswith("image/"):
-                    attachment_types.append("[image]")
-                elif attachment.content_type.startswith("video/"):
-                    attachment_types.append("[video]")
-                else:
-                    attachment_types.append("[file]")
-            else:
-                attachment_types.append("[attachment]")
-        if attachment_types:
-            content = f"{content} {' '.join(attachment_types)}".strip()
+    # Truncate before adding the markers below, so a wall of text can't push
+    # them out of the display entirely
+    parts = [_truncate(content, MAX_CONTENT_LENGTH)] if content else []
 
-    # Add embed indicators
-    if message.embeds:
-        content = f"{content} [embed]".strip()
+    markers = []
+    if include_attachments:
+        markers.extend(_describe_attachment(attachment, message.guild) for attachment in message.attachments)
+    markers.extend(_describe_embed(embed, message.guild) for embed in message.embeds)
 
-    # Truncate very long messages
-    max_length = 500
-    if len(content) > max_length:
-        content = content[: max_length - 3] + "..."
+    if len(markers) > MAX_MARKERS:
+        hidden = len(markers) - MAX_MARKERS
+        markers = markers[:MAX_MARKERS] + [f"[+{hidden} more]"]
+    parts.extend(markers)
 
-    return f"> **{anonymized_name}:** {content}"
+    return f"> **{anonymized_name}:** {' '.join(parts).strip()}".rstrip()
 
 
 def format_game_message(

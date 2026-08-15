@@ -113,7 +113,19 @@ MESSAGE_SEARCH_LIMIT = 100       # Messages to fetch per API call
 MAX_SEARCH_RETRIES = 5           # How many channel/time combos to try
 LOOKBACK_DAYS = 365              # How far back to look for messages
 MIN_MESSAGE_LENGTH = 200         # Minimum characters for "interesting"
+RECENT_MESSAGE_MEMORY = 100      # Recent rounds whose messages won't be reused
 ```
+
+### How messages are picked
+
+The bot can't enumerate a channel's history, so it samples: pick a random channel,
+jump to a random point in time within that channel's lifespan, fetch a batch of
+messages from there, and choose uniformly among the interesting ones in the batch.
+Targets used in the last `RECENT_MESSAGE_MEMORY` rounds are skipped unless nothing
+else can be found.
+
+This is not uniform over all history — quiet channels are still over-sampled
+relative to busy ones, since channels are chosen uniformly.
 
 ## Project Structure
 

@@ -114,6 +114,49 @@ class TestGameRounds:
         assert await db.get_round_number(guild_id) == 2
 
 
+class TestRecentTargetMessageIds:
+    async def _create_round(self, db, guild_id: str, message_id: str) -> None:
+        await db.create_round(
+            guild_id=guild_id,
+            game_channel_id="456",
+            target_message_id=message_id,
+            target_channel_id="101",
+            target_timestamp_ms=1609459200000,
+            target_author_id="author123",
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_without_rounds(self, db):
+        assert await db.get_recent_target_message_ids("123", 10) == set()
+
+    @pytest.mark.asyncio
+    async def test_returns_target_ids(self, db):
+        for message_id in ("1", "2", "3"):
+            await self._create_round(db, "123", message_id)
+
+        assert await db.get_recent_target_message_ids("123", 10) == {"1", "2", "3"}
+
+    @pytest.mark.asyncio
+    async def test_limits_to_most_recent(self, db):
+        for message_id in ("1", "2", "3"):
+            await self._create_round(db, "123", message_id)
+
+        assert await db.get_recent_target_message_ids("123", 2) == {"2", "3"}
+
+    @pytest.mark.asyncio
+    async def test_scoped_to_guild(self, db):
+        await self._create_round(db, "123", "1")
+        await self._create_round(db, "456", "2")
+
+        assert await db.get_recent_target_message_ids("123", 10) == {"1"}
+
+    @pytest.mark.asyncio
+    async def test_zero_limit(self, db):
+        await self._create_round(db, "123", "1")
+
+        assert await db.get_recent_target_message_ids("123", 0) == set()
+
+
 class TestGuesses:
     @pytest.mark.asyncio
     async def test_add_guess(self, db):

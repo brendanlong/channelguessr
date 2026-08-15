@@ -27,12 +27,13 @@ def mock_discord_message():
             attachments=None,
             embeds=None,
             author_id=12345,
+            message_id=123456789,
         ):
             self.content = content
             self.author = MockAuthor(bot=author_bot, user_id=author_id)
             self.attachments = attachments or []
             self.embeds = embeds or []
-            self.id = 123456789
+            self.id = message_id
             self.guild = None  # For escape_mentions; None means mentions won't be resolved
 
     return MockMessage

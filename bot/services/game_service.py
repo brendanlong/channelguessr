@@ -172,9 +172,10 @@ class GameService:
             logger.info(f"Round already active in channel #{channel.name}")
             return (False, "A round is already active! Wait for it to finish.")
 
-        # Select random message from guild history
+        # Select random message from guild history, avoiding recently used targets
         logger.info("Searching for a random message from guild history...")
-        result = await self.message_selector.select_random_message(guild)
+        recent_target_ids = await self.db.get_recent_target_message_ids(guild_id, Config.RECENT_MESSAGE_MEMORY)
+        result = await self.message_selector.select_random_message(guild, exclude_message_ids=recent_target_ids)
         if not result:
             return (
                 False,

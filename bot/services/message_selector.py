@@ -23,15 +23,30 @@ MIN_BATCH_SIZE = 5
 
 DAY_MS = 24 * 60 * 60 * 1000
 
-# How quickly the per-channel density estimate follows new observations. Each
-# probe is noisy (activity varies over a channel's history), so blend rather
-# than replace.
-DENSITY_EWMA_ALPHA = 0.3
+# How quickly the per-channel density estimate follows new observations once
+# it has some history. Individual probes are very noisy (activity varies a lot
+# across a channel's history), so early observations are averaged outright
+# (alpha = 1/n), which converges on the true window-average density; after
+# ~1/alpha observations this becomes a slow EWMA so the estimate can still
+# track long-term changes in activity.
+DENSITY_EWMA_MIN_ALPHA = 0.1
+
+# Fraction of the channel-pick distribution dealt out uniformly regardless of
+# measured activity. This guarantees every channel keeps getting re-measured at
+# a bounded rate, so one unlucky near-zero reading can't bury a channel behind
+# busy neighbors for thousands of rounds.
+EXPLORATION_FRACTION = 0.1
 
 # Floor on the density used for channel weighting, equivalent to one message
-# per week. Without it a channel that once measured near-zero would never be
-# probed again and couldn't recover if it came back to life.
+# per week, mostly so the total weight can never degenerate to zero
 MIN_WEIGHT_DENSITY = 1 / (7 * DAY_MS)
+
+# How far the advancing window start may overtake a cached first-in-window
+# message before we re-probe for the real bound. Within the slack we just treat
+# the window start itself as the bound: the channel demonstrably had traffic
+# there, and at most this much dead time gets added to a window hundreds of
+# days long. Keeps re-probes to roughly one per channel per day of uptime.
+FIRST_MESSAGE_STALE_MS = DAY_MS
 
 
 @dataclass
@@ -43,8 +58,11 @@ class _ChannelState:
     it would complicate the privacy story for no real gain.
     """
 
-    # EWMA of messages per millisecond, measured around the points we've probed
+    # Estimate of messages per millisecond, measured around the points we've
+    # probed (a running mean that decays into a slow EWMA)
     density_per_ms: float | None = None
+    # How many probes have fed density_per_ms, for the 1/n averaging phase
+    observations: int = 0
     # Whether we've probed for the first in-window message yet; distinguishes
     # "never looked" from "looked and found nothing" (first_message_ms=None)
     probed: bool = False
@@ -60,14 +78,17 @@ class _ChannelState:
 
         Returns (cache_is_valid, first_message_ms). The lookback window only
         ever moves forward, so a cached first message stays correct until the
-        window start passes it; a cached "nothing in the window" stays correct
-        until the channel sees a new message.
+        window start passes it — and for FIRST_MESSAGE_STALE_MS beyond that we
+        still accept it (the caller clamps to the window start) rather than
+        re-probing every round for a channel with traffic right at the window
+        edge. A cached "nothing in the window" stays correct until the channel
+        sees a new message.
         """
         if not self.probed:
             return (False, None)
         if self.first_message_ms is None:
             return (last_message_id == self.probed_last_message_id, None)
-        return (self.first_message_ms >= start_ms, self.first_message_ms)
+        return (start_ms - self.first_message_ms <= FIRST_MESSAGE_STALE_MS, self.first_message_ms)
 
 
 def is_interesting_message(message: discord.Message) -> bool:
@@ -310,13 +331,13 @@ class MessageSelector:
                     return None
         return (start_ms, end_ms)
 
-    def _channel_weights(self, searchable: list[tuple[discord.TextChannel, tuple[int, int]]]) -> list[float]:
+    def _estimated_message_counts(self, searchable: list[tuple[discord.TextChannel, tuple[int, int]]]) -> list[float]:
         """Estimate how many eligible messages each channel holds.
 
-        A channel's weight is its measured message density times the span of
+        A channel's estimate is its measured message density times the span of
         its search window. Channels we haven't probed yet get the mean density
         of the ones we have, so the first round behaves like a uniform pick and
-        the weighting self-calibrates as probes accumulate.
+        the estimates self-calibrate as probes accumulate.
         """
         known = [
             state.density_per_ms
@@ -327,14 +348,29 @@ class MessageSelector:
             return [1.0] * len(searchable)
 
         default_density = sum(known) / len(known)
-        weights = []
+        counts = []
         for channel, (start_ms, end_ms) in searchable:
             state = self._channel_states.get(channel.id)
             density = (
                 state.density_per_ms if state is not None and state.density_per_ms is not None else default_density
             )
-            weights.append(max(density, MIN_WEIGHT_DENSITY) * (end_ms - start_ms + 1))
-        return weights
+            counts.append(max(density, MIN_WEIGHT_DENSITY) * (end_ms - start_ms + 1))
+        return counts
+
+    def _channel_weights(self, searchable: list[tuple[discord.TextChannel, tuple[int, int]]]) -> list[float]:
+        """Weight channels by estimated eligible-message count, plus exploration.
+
+        Mixing a uniform component into the activity-proportional weights keeps
+        every channel's density estimate fresh: without it, a channel that once
+        measured near-zero would almost never be picked again, so the estimate
+        could never correct itself.
+        """
+        counts = self._estimated_message_counts(searchable)
+        total = sum(counts)
+        if total <= 0:
+            return [1.0] * len(searchable)
+        uniform_share = EXPLORATION_FRACTION * total / len(counts)
+        return [(1 - EXPLORATION_FRACTION) * count + uniform_share for count in counts]
 
     def _observe_density(
         self, channel: discord.TextChannel, probe_ms: int, window_end_ms: int, messages: list[discord.Message]
@@ -345,6 +381,11 @@ class MessageSelector:
         the probe point and the last message's timestamp. A short batch means
         the channel's eligible history ran out, so the same N messages cover
         everything up to the end of the search window instead.
+
+        Because probe points are uniform over the search window, each
+        observation is an unbiased (if noisy) sample of the channel's average
+        density, and averaging them converges on the true value even for very
+        bursty channels.
         """
         if len(messages) >= Config.MESSAGE_SEARCH_LIMIT:
             span_ms = snowflake_to_timestamp_ms(messages[-1].id) - probe_ms
@@ -353,18 +394,20 @@ class MessageSelector:
         observed = len(messages) / max(span_ms, 1)
 
         state = self._channel_states.setdefault(channel.id, _ChannelState())
-        if state.density_per_ms is None:
-            state.density_per_ms = observed
-        else:
-            state.density_per_ms = DENSITY_EWMA_ALPHA * observed + (1 - DENSITY_EWMA_ALPHA) * state.density_per_ms
+        state.observations += 1
+        alpha = max(1 / state.observations, DENSITY_EWMA_MIN_ALPHA)
+        previous = state.density_per_ms if state.density_per_ms is not None else 0.0
+        state.density_per_ms = alpha * observed + (1 - alpha) * previous
         logger.debug(f"#{channel.name} density estimate is now {state.density_per_ms * DAY_MS:.1f} messages/day")
 
     async def _first_in_window_ms(self, channel: discord.TextChannel, start_ms: int) -> int | None:
         """Find the timestamp of the channel's first message at or after start_ms.
 
-        Costs one API call per channel, cached for the process lifetime. It only
-        re-probes when the advancing window start passes the cached first
-        message, or when a channel whose probe found nothing gets new traffic.
+        Costs roughly one API call per channel: the result is cached, and only
+        re-probed when the advancing window start overtakes the cached first
+        message by more than FIRST_MESSAGE_STALE_MS (about once per channel per
+        day of uptime, for channels with traffic right at the window edge), or
+        when a channel whose probe found nothing gets new traffic.
         """
         state = self._channel_states.setdefault(channel.id, _ChannelState())
         valid, first_message_ms = state.cached_first_message(start_ms, channel.last_message_id)

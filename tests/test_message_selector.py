@@ -11,8 +11,8 @@ import discord
 import pytest
 
 from bot.services.message_selector import (
-    DENSITY_EWMA_ALPHA,
-    MIN_WEIGHT_DENSITY,
+    DENSITY_EWMA_MIN_ALPHA,
+    EXPLORATION_FRACTION,
     URL_PATTERN,
     MessageSelector,
     _ChannelState,
@@ -404,9 +404,10 @@ class TestSelectRandomMessage:
         for _ in range(200):
             assert await selector.select_random_message(as_guild(quiet, busy)) is not None
 
-        # Expected split is ~1000:1; leave lots of slack for randomness
-        assert len(busy.batch_calls) > 180
-        assert len(quiet.batch_calls) < 20
+        # Expected split is ~1000:1 plus the 10% uniform exploration mix, so
+        # quiet should get roughly 5% of picks; leave lots of slack
+        assert len(busy.batch_calls) > 170
+        assert len(quiet.batch_calls) < 30
 
 
 class TestChannelWeights:
@@ -416,24 +417,24 @@ class TestChannelWeights:
 
         assert MessageSelector()._channel_weights(searchable) == [1.0, 1.0]
 
-    def test_weights_scale_with_density(self):
+    def test_counts_scale_with_density(self):
         a, b = MockChannel(name="a"), MockChannel(name="b")
         selector = MessageSelector()
         selector._channel_states[a.id] = _ChannelState(density_per_ms=0.001)
         selector._channel_states[b.id] = _ChannelState(density_per_ms=0.002)
         span = 10 * DAY_MS
 
-        weight_a, weight_b = selector._channel_weights([(as_channel(a), (0, span)), (as_channel(b), (0, span))])
+        count_a, count_b = selector._estimated_message_counts([(as_channel(a), (0, span)), (as_channel(b), (0, span))])
 
-        assert weight_b == pytest.approx(2 * weight_a)
+        assert count_b == pytest.approx(2 * count_a)
 
-    def test_weights_scale_with_window_span(self):
+    def test_counts_scale_with_window_span(self):
         a = MockChannel(name="a")
         selector = MessageSelector()
         selector._channel_states[a.id] = _ChannelState(density_per_ms=0.001)
 
-        [narrow] = selector._channel_weights([(as_channel(a), (0, 10 * DAY_MS))])
-        [wide] = selector._channel_weights([(as_channel(a), (0, 20 * DAY_MS))])
+        [narrow] = selector._estimated_message_counts([(as_channel(a), (0, 10 * DAY_MS))])
+        [wide] = selector._estimated_message_counts([(as_channel(a), (0, 20 * DAY_MS))])
 
         assert wide == pytest.approx(2 * narrow, rel=1e-3)
 
@@ -444,21 +445,42 @@ class TestChannelWeights:
         selector._channel_states[b.id] = _ChannelState(density_per_ms=0.003)
         span = 10 * DAY_MS
 
-        weight_a, weight_b, weight_c = selector._channel_weights([(as_channel(ch), (0, span)) for ch in (a, b, c)])
+        count_a, count_b, count_c = selector._estimated_message_counts(
+            [(as_channel(ch), (0, span)) for ch in (a, b, c)]
+        )
 
-        assert weight_c == pytest.approx((weight_a + weight_b) / 2)
+        assert count_c == pytest.approx((count_a + count_b) / 2)
 
-    def test_dead_channel_weight_is_floored_above_zero(self):
+    def test_weights_mix_in_a_uniform_exploration_share(self):
         dead, busy = MockChannel(name="dead"), MockChannel(name="busy")
         selector = MessageSelector()
         selector._channel_states[dead.id] = _ChannelState(density_per_ms=0.0)
         selector._channel_states[busy.id] = _ChannelState(density_per_ms=1.0)
         span = 10 * DAY_MS
+        searchable = [(as_channel(dead), (0, span)), (as_channel(busy), (0, span))]
 
-        weight_dead, _ = selector._channel_weights([(as_channel(dead), (0, span)), (as_channel(busy), (0, span))])
+        weight_dead, weight_busy = selector._channel_weights(searchable)
 
-        assert weight_dead == pytest.approx(MIN_WEIGHT_DENSITY * (span + 1))
-        assert weight_dead > 0
+        # However dead a channel measures, it keeps at least half the uniform
+        # exploration share, so its estimate can still be corrected later
+        assert weight_dead / (weight_dead + weight_busy) >= EXPLORATION_FRACTION / 2
+        # And exploration barely dilutes the activity signal for busy channels
+        assert weight_busy / (weight_dead + weight_busy) >= 0.9
+
+    def test_weights_preserve_count_proportions_beyond_exploration(self):
+        a, b = MockChannel(name="a"), MockChannel(name="b")
+        selector = MessageSelector()
+        selector._channel_states[a.id] = _ChannelState(density_per_ms=0.001)
+        selector._channel_states[b.id] = _ChannelState(density_per_ms=0.002)
+        span = 10 * DAY_MS
+        searchable = [(as_channel(a), (0, span)), (as_channel(b), (0, span))]
+
+        count_a, count_b = selector._estimated_message_counts(searchable)
+        weight_a, weight_b = selector._channel_weights(searchable)
+        total = count_a + count_b
+
+        assert weight_a == pytest.approx((1 - EXPLORATION_FRACTION) * count_a + EXPLORATION_FRACTION * total / 2)
+        assert weight_b == pytest.approx((1 - EXPLORATION_FRACTION) * count_b + EXPLORATION_FRACTION * total / 2)
 
 
 class TestObserveDensity:
@@ -489,7 +511,9 @@ class TestObserveDensity:
         # there is between the probe point and the end of the window
         assert selector._channel_states[channel.id].density_per_ms == pytest.approx(10 / (20 * DAY_MS))
 
-    def test_observations_blend_as_an_ewma(self, mock_discord_message):
+    def test_early_observations_average_evenly(self, mock_discord_message):
+        # With few observations alpha is 1/n, so two probes average 50/50
+        # rather than letting the newest one dominate
         now_ms = int(time.time() * 1000)
         window_end_ms = now_ms - DAY_MS
         channel = MockChannel()
@@ -501,7 +525,22 @@ class TestObserveDensity:
         messages = [mock_discord_message(content="x", message_id=timestamp_ms_to_snowflake(window_end_ms))] * 10
         selector._observe_density(as_channel(channel), window_end_ms - 10 * DAY_MS, window_end_ms, messages)
 
-        expected = DENSITY_EWMA_ALPHA * (10 / (10 * DAY_MS))
+        expected = (0.0 + 10 / (10 * DAY_MS)) / 2
+        assert selector._channel_states[channel.id].density_per_ms == pytest.approx(expected)
+
+    def test_established_estimates_decay_as_a_slow_ewma(self, mock_discord_message):
+        now_ms = int(time.time() * 1000)
+        window_end_ms = now_ms - DAY_MS
+        channel = MockChannel()
+        selector = MessageSelector()
+        prior = 42 / DAY_MS
+        selector._channel_states[channel.id] = _ChannelState(density_per_ms=prior, observations=100)
+
+        messages = [mock_discord_message(content="x", message_id=timestamp_ms_to_snowflake(window_end_ms))] * 10
+        selector._observe_density(as_channel(channel), window_end_ms - 10 * DAY_MS, window_end_ms, messages)
+
+        observed = 10 / (10 * DAY_MS)
+        expected = DENSITY_EWMA_MIN_ALPHA * observed + (1 - DENSITY_EWMA_MIN_ALPHA) * prior
         assert selector._channel_states[channel.id].density_per_ms == pytest.approx(expected)
 
 
@@ -561,4 +600,30 @@ class TestFirstInWindowProbe:
         result = await selector.select_random_message(as_guild(channel))
 
         assert result is not None
+        assert channel.limit_calls.count(1) == 2
+
+    @pytest.mark.asyncio
+    async def test_reprobes_when_window_advances_past_first_message(self, mock_discord_message, monkeypatch):
+        # Traffic starts right at the window edge, the worst case for the
+        # cache: the advancing window start overtakes the cached first message
+        real_now_s = time.time()
+        now_ms = int(real_now_s * 1000)
+        window_start_ms = now_ms - Config.LOOKBACK_DAYS * DAY_MS
+        messages = [
+            mock_discord_message(
+                content="A" * 200, message_id=timestamp_ms_to_snowflake(window_start_ms + 60_000 + i * DAY_MS)
+            )
+            for i in range(10)
+        ]
+        channel = MockChannel(messages=messages)
+        selector = MessageSelector()
+
+        for _ in range(5):
+            assert await selector.select_random_message(as_guild(channel)) is not None
+        assert channel.limit_calls.count(1) == 1
+
+        # Two days later the window start is beyond the staleness slack, so
+        # the bound gets re-measured
+        monkeypatch.setattr(time, "time", lambda: real_now_s + 2 * 24 * 60 * 60)
+        assert await selector.select_random_message(as_guild(channel)) is not None
         assert channel.limit_calls.count(1) == 2

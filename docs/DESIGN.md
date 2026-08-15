@@ -164,13 +164,12 @@ This implementation covers Phase 1 (MVP):
 - Basic game commands
 - SQLite database
 - Real-time message indexing (no historical backfill)
-- Equal channel weights for random selection
+- Activity-weighted channel selection (density estimates calibrated from history probes, kept in memory)
 - Basic scoring system
 - Leaderboard
 
 ### Not Included in MVP
 
-- Channel activity weighting
 - Historical message backfill
 - Configurable interest criteria
 - Multi-round games

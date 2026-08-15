@@ -1,5 +1,6 @@
 """Tests for message selector."""
 
+import itertools
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -9,7 +10,14 @@ from unittest.mock import MagicMock
 import discord
 import pytest
 
-from bot.services.message_selector import URL_PATTERN, MessageSelector, is_interesting_message
+from bot.services.message_selector import (
+    DENSITY_EWMA_MIN_ALPHA,
+    EXPLORATION_FRACTION,
+    URL_PATTERN,
+    MessageSelector,
+    _ChannelState,
+    is_interesting_message,
+)
 from config import Config
 from utils.snowflake import snowflake_to_timestamp_ms, timestamp_ms_to_snowflake
 
@@ -85,6 +93,8 @@ class TestIsInterestingMessage:
 class MockChannel:
     """A text channel whose history() returns a fixed list of messages."""
 
+    _next_id = itertools.count(1000)
+
     def __init__(
         self,
         name="general",
@@ -95,7 +105,7 @@ class MockChannel:
         empty=False,
     ):
         self.name = name
-        self.id = 999
+        self.id = next(MockChannel._next_id)
         self._messages = messages or []
         self._forbidden_after = forbidden_after
         now_ms = int(time.time() * 1000)
@@ -108,10 +118,13 @@ class MockChannel:
         self.last_message_id = None if empty else timestamp_ms_to_snowflake(last_message_ms)
         self.history_calls = []
         self.before_calls = []
+        self.limit_calls = []
 
-    def history(self, *, after, before, limit, oldest_first):
+    def history(self, *, after, before=None, limit, oldest_first):
         self.history_calls.append(after.id)
-        self.before_calls.append(before.id)
+        if before is not None:
+            self.before_calls.append(before.id)
+        self.limit_calls.append(limit)
         messages = self._messages
         forbid = self._forbidden_after is not None and len(self.history_calls) > self._forbidden_after
 
@@ -122,6 +135,11 @@ class MockChannel:
                 yield msg
 
         return _iter()
+
+    @property
+    def batch_calls(self):
+        """The `after` ids of full history fetches, excluding limit-1 probes."""
+        return [after for after, limit in zip(self.history_calls, self.limit_calls, strict=True) if limit > 1]
 
     def permissions_for(self, _member):
         class Permissions:
@@ -308,8 +326,10 @@ class TestSelectRandomMessage:
     async def test_falls_back_when_channel_becomes_unreadable(self, mock_discord_message):
         # Only interesting message was used recently, then the bot loses access to
         # the guild's only channel. The already-fetched fallback should still be used.
+        # Call 1 is the first-in-window probe, call 2 the batch that sets the
+        # fallback; access is lost after that.
         messages = make_messages(mock_discord_message, 10, interesting_ids={4})
-        channel = MockChannel(messages=messages, forbidden_after=1)
+        channel = MockChannel(messages=messages, forbidden_after=2)
 
         result = await MessageSelector().select_random_message(as_guild(channel), exclude_message_ids={"4"})
 
@@ -363,3 +383,247 @@ class TestSelectRandomMessage:
 
         assert await MessageSelector().select_random_message(guild) is None
         assert too_new.history_calls == []
+
+    @pytest.mark.asyncio
+    async def test_busy_channels_get_picked_more_often(self, mock_discord_message, monkeypatch):
+        now_ms = int(time.time() * 1000)
+        quiet = MockChannel(name="quiet", messages=make_messages(mock_discord_message, 10, interesting_ids={0}))
+        busy = MockChannel(name="busy", messages=make_messages(mock_discord_message, 10, interesting_ids={0}))
+        selector = MessageSelector()
+        # Pretend earlier probes established a 1000x activity difference, and
+        # freeze the estimates so the mocks' batches don't recalibrate them
+        for channel, messages_per_day in ((quiet, 1), (busy, 1000)):
+            selector._channel_states[channel.id] = _ChannelState(
+                density_per_ms=messages_per_day / DAY_MS,
+                probed=True,
+                first_message_ms=now_ms - 300 * DAY_MS,
+                probed_last_message_id=channel.last_message_id,
+            )
+        monkeypatch.setattr(selector, "_observe_density", lambda *args: None)
+
+        for _ in range(200):
+            assert await selector.select_random_message(as_guild(quiet, busy)) is not None
+
+        # Expected split is ~1000:1 plus the 10% uniform exploration mix, so
+        # quiet should get roughly 5% of picks; leave lots of slack
+        assert len(busy.batch_calls) > 170
+        assert len(quiet.batch_calls) < 30
+
+
+class TestChannelWeights:
+    def test_uniform_before_any_observations(self):
+        a, b = MockChannel(name="a"), MockChannel(name="b")
+        searchable = [(as_channel(a), (0, 100)), (as_channel(b), (0, 10**12))]
+
+        assert MessageSelector()._channel_weights(searchable) == [1.0, 1.0]
+
+    def test_counts_scale_with_density(self):
+        a, b = MockChannel(name="a"), MockChannel(name="b")
+        selector = MessageSelector()
+        selector._channel_states[a.id] = _ChannelState(density_per_ms=0.001)
+        selector._channel_states[b.id] = _ChannelState(density_per_ms=0.002)
+        span = 10 * DAY_MS
+
+        count_a, count_b = selector._estimated_message_counts([(as_channel(a), (0, span)), (as_channel(b), (0, span))])
+
+        assert count_b == pytest.approx(2 * count_a)
+
+    def test_counts_scale_with_window_span(self):
+        a = MockChannel(name="a")
+        selector = MessageSelector()
+        selector._channel_states[a.id] = _ChannelState(density_per_ms=0.001)
+
+        [narrow] = selector._estimated_message_counts([(as_channel(a), (0, 10 * DAY_MS))])
+        [wide] = selector._estimated_message_counts([(as_channel(a), (0, 20 * DAY_MS))])
+
+        assert wide == pytest.approx(2 * narrow, rel=1e-3)
+
+    def test_unknown_channel_gets_mean_of_known_densities(self):
+        a, b, c = MockChannel(name="a"), MockChannel(name="b"), MockChannel(name="c")
+        selector = MessageSelector()
+        selector._channel_states[a.id] = _ChannelState(density_per_ms=0.001)
+        selector._channel_states[b.id] = _ChannelState(density_per_ms=0.003)
+        span = 10 * DAY_MS
+
+        count_a, count_b, count_c = selector._estimated_message_counts(
+            [(as_channel(ch), (0, span)) for ch in (a, b, c)]
+        )
+
+        assert count_c == pytest.approx((count_a + count_b) / 2)
+
+    def test_weights_mix_in_a_uniform_exploration_share(self):
+        dead, busy = MockChannel(name="dead"), MockChannel(name="busy")
+        selector = MessageSelector()
+        selector._channel_states[dead.id] = _ChannelState(density_per_ms=0.0)
+        selector._channel_states[busy.id] = _ChannelState(density_per_ms=1.0)
+        span = 10 * DAY_MS
+        searchable = [(as_channel(dead), (0, span)), (as_channel(busy), (0, span))]
+
+        weight_dead, weight_busy = selector._channel_weights(searchable)
+
+        # However dead a channel measures, it keeps at least half the uniform
+        # exploration share, so its estimate can still be corrected later
+        assert weight_dead / (weight_dead + weight_busy) >= EXPLORATION_FRACTION / 2
+        # And exploration barely dilutes the activity signal for busy channels
+        assert weight_busy / (weight_dead + weight_busy) >= 0.9
+
+    def test_weights_preserve_count_proportions_beyond_exploration(self):
+        a, b = MockChannel(name="a"), MockChannel(name="b")
+        selector = MessageSelector()
+        selector._channel_states[a.id] = _ChannelState(density_per_ms=0.001)
+        selector._channel_states[b.id] = _ChannelState(density_per_ms=0.002)
+        span = 10 * DAY_MS
+        searchable = [(as_channel(a), (0, span)), (as_channel(b), (0, span))]
+
+        count_a, count_b = selector._estimated_message_counts(searchable)
+        weight_a, weight_b = selector._channel_weights(searchable)
+        total = count_a + count_b
+
+        assert weight_a == pytest.approx((1 - EXPLORATION_FRACTION) * count_a + EXPLORATION_FRACTION * total / 2)
+        assert weight_b == pytest.approx((1 - EXPLORATION_FRACTION) * count_b + EXPLORATION_FRACTION * total / 2)
+
+
+class TestObserveDensity:
+    def test_full_batch_measures_probe_to_last_message(self, mock_discord_message):
+        now_ms = int(time.time() * 1000)
+        probe_ms = now_ms - 10 * DAY_MS
+        last_ms = now_ms - 5 * DAY_MS
+        count = Config.MESSAGE_SEARCH_LIMIT
+        messages = [mock_discord_message(content="x", message_id=timestamp_ms_to_snowflake(last_ms))] * count
+        channel = MockChannel()
+        selector = MessageSelector()
+
+        selector._observe_density(as_channel(channel), probe_ms, now_ms - DAY_MS, messages)
+
+        assert selector._channel_states[channel.id].density_per_ms == pytest.approx(count / (5 * DAY_MS))
+
+    def test_short_batch_measures_probe_to_window_end(self, mock_discord_message):
+        now_ms = int(time.time() * 1000)
+        probe_ms = now_ms - 21 * DAY_MS
+        window_end_ms = now_ms - DAY_MS
+        messages = [mock_discord_message(content="x", message_id=timestamp_ms_to_snowflake(now_ms - 15 * DAY_MS))] * 10
+        channel = MockChannel()
+        selector = MessageSelector()
+
+        selector._observe_density(as_channel(channel), probe_ms, window_end_ms, messages)
+
+        # The batch ran out before the limit, so those 10 messages are all
+        # there is between the probe point and the end of the window
+        assert selector._channel_states[channel.id].density_per_ms == pytest.approx(10 / (20 * DAY_MS))
+
+    def test_early_observations_average_evenly(self, mock_discord_message):
+        # With few observations alpha is 1/n, so two probes average 50/50
+        # rather than letting the newest one dominate
+        now_ms = int(time.time() * 1000)
+        window_end_ms = now_ms - DAY_MS
+        channel = MockChannel()
+        selector = MessageSelector()
+
+        selector._observe_density(as_channel(channel), window_end_ms - 10 * DAY_MS, window_end_ms, [])
+        assert selector._channel_states[channel.id].density_per_ms == 0.0
+
+        messages = [mock_discord_message(content="x", message_id=timestamp_ms_to_snowflake(window_end_ms))] * 10
+        selector._observe_density(as_channel(channel), window_end_ms - 10 * DAY_MS, window_end_ms, messages)
+
+        expected = (0.0 + 10 / (10 * DAY_MS)) / 2
+        assert selector._channel_states[channel.id].density_per_ms == pytest.approx(expected)
+
+    def test_established_estimates_decay_as_a_slow_ewma(self, mock_discord_message):
+        now_ms = int(time.time() * 1000)
+        window_end_ms = now_ms - DAY_MS
+        channel = MockChannel()
+        selector = MessageSelector()
+        prior = 42 / DAY_MS
+        selector._channel_states[channel.id] = _ChannelState(density_per_ms=prior, observations=100)
+
+        messages = [mock_discord_message(content="x", message_id=timestamp_ms_to_snowflake(window_end_ms))] * 10
+        selector._observe_density(as_channel(channel), window_end_ms - 10 * DAY_MS, window_end_ms, messages)
+
+        observed = 10 / (10 * DAY_MS)
+        expected = DENSITY_EWMA_MIN_ALPHA * observed + (1 - DENSITY_EWMA_MIN_ALPHA) * prior
+        assert selector._channel_states[channel.id].density_per_ms == pytest.approx(expected)
+
+
+class TestFirstInWindowProbe:
+    @pytest.mark.asyncio
+    async def test_probe_is_cached_and_narrows_the_search(self, mock_discord_message):
+        # Channel created 400 days ago, but all its traffic is from the last month
+        now_ms = int(time.time() * 1000)
+        first_ms = now_ms - 30 * DAY_MS
+        last_ms = now_ms - 3 * DAY_MS
+        messages = [
+            mock_discord_message(content="A" * 200, message_id=timestamp_ms_to_snowflake(first_ms + i * DAY_MS))
+            for i in range(28)
+        ]
+        channel = MockChannel(messages=messages, created_ms=now_ms - 400 * DAY_MS, last_message_ms=last_ms)
+        selector = MessageSelector()
+
+        for _ in range(20):
+            assert await selector.select_random_message(as_guild(channel)) is not None
+
+        # Exactly one limit-1 probe ever, and every batch fetch starts at or
+        # after the channel's real first in-window message rather than at its
+        # creation 400 days ago
+        assert channel.limit_calls.count(1) == 1
+        assert channel.batch_calls
+        assert all(after >= timestamp_ms_to_snowflake(first_ms - 1000) for after in channel.batch_calls)
+
+    @pytest.mark.asyncio
+    async def test_channel_with_only_deleted_history_is_probed_once(self):
+        # last_message_id points at a message, but everything in the window has
+        # been deleted, so history() comes back empty
+        channel = MockChannel(messages=[])
+        selector = MessageSelector()
+
+        assert await selector.select_random_message(as_guild(channel)) is None
+        assert channel.limit_calls == [1]
+
+        # The empty result is remembered: the second call doesn't touch the API
+        assert await selector.select_random_message(as_guild(channel)) is None
+        assert channel.limit_calls == [1]
+
+    @pytest.mark.asyncio
+    async def test_reprobes_when_an_empty_channel_gets_new_traffic(self, mock_discord_message):
+        now_ms = int(time.time() * 1000)
+        channel = MockChannel(messages=[])
+        selector = MessageSelector()
+
+        assert await selector.select_random_message(as_guild(channel)) is None
+
+        # New messages arrive, which moves last_message_id forward
+        channel._messages = [
+            mock_discord_message(content="A" * 200, message_id=timestamp_ms_to_snowflake(now_ms - (10 - i) * DAY_MS))
+            for i in range(8)
+        ]
+        channel.last_message_id = channel._messages[-1].id
+
+        result = await selector.select_random_message(as_guild(channel))
+
+        assert result is not None
+        assert channel.limit_calls.count(1) == 2
+
+    @pytest.mark.asyncio
+    async def test_reprobes_when_window_advances_past_first_message(self, mock_discord_message, monkeypatch):
+        # Traffic starts right at the window edge, the worst case for the
+        # cache: the advancing window start overtakes the cached first message
+        real_now_s = time.time()
+        now_ms = int(real_now_s * 1000)
+        window_start_ms = now_ms - Config.LOOKBACK_DAYS * DAY_MS
+        messages = [
+            mock_discord_message(
+                content="A" * 200, message_id=timestamp_ms_to_snowflake(window_start_ms + 60_000 + i * DAY_MS)
+            )
+            for i in range(10)
+        ]
+        channel = MockChannel(messages=messages)
+        selector = MessageSelector()
+
+        for _ in range(5):
+            assert await selector.select_random_message(as_guild(channel)) is not None
+        assert channel.limit_calls.count(1) == 1
+
+        # Two days later the window start is beyond the staleness slack, so
+        # the bound gets re-measured
+        monkeypatch.setattr(time, "time", lambda: real_now_s + 2 * 24 * 60 * 60)
+        assert await selector.select_random_message(as_guild(channel)) is not None
+        assert channel.limit_calls.count(1) == 2

@@ -20,6 +20,8 @@ URL_PATTERN = re.compile(r"https?://\S+")
 # history, where the candidate pool is tiny and would repeat constantly
 MIN_BATCH_SIZE = 5
 
+DAY_MS = 24 * 60 * 60 * 1000
+
 
 def is_interesting_message(message: discord.Message) -> bool:
     """Check if a message is interesting enough for the game.
@@ -74,7 +76,7 @@ class MessageSelector:
         now_ms = int(time.time() * 1000)
         min_age_ms = Config.MIN_MESSAGE_AGE_HOURS * 60 * 60 * 1000
         max_timestamp_ms = now_ms - min_age_ms
-        min_timestamp_ms = now_ms - (Config.LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
+        min_timestamp_ms = now_ms - (Config.LOOKBACK_DAYS * DAY_MS)
         before_snowflake = timestamp_ms_to_snowflake(max_timestamp_ms)
 
         # Pair each readable channel with its own search window up front. Channels
@@ -172,13 +174,21 @@ class MessageSelector:
 
         Channels whose history doesn't overlap the search window are omitted.
         """
+        readable = self._get_readable_channels(guild)
         searchable = []
-        for channel in self._get_readable_channels(guild):
+        skipped = []
+        for channel in readable:
             bounds = self._channel_search_bounds(channel, min_timestamp_ms, max_timestamp_ms)
             if bounds is None:
-                logger.debug(f"Skipping #{channel.name}: no history in the search window")
+                skipped.append(channel.name)
                 continue
             searchable.append((channel, bounds))
+
+        if skipped:
+            logger.info(
+                f"Searching {len(searchable)} of {len(readable)} readable channels; "
+                f"skipped {len(skipped)} with no eligible history: {', '.join('#' + name for name in skipped)}"
+            )
         return searchable
 
     def _channel_search_bounds(
@@ -193,13 +203,22 @@ class MessageSelector:
         # Discord never rewinds last_message_id, even when that message is
         # deleted, so None means nothing has ever been posted here
         if channel.last_message_id is None:
+            logger.debug(f"#{channel.name} has never had a message")
             return None
 
         created_ms = int(channel.created_at.timestamp() * 1000)
+        last_message_ms = snowflake_to_timestamp_ms(channel.last_message_id)
         start_ms = max(min_timestamp_ms, created_ms)
-        end_ms = min(max_timestamp_ms, snowflake_to_timestamp_ms(channel.last_message_id))
+        end_ms = min(max_timestamp_ms, last_message_ms)
 
         if start_ms > end_ms:
+            if last_message_ms < min_timestamp_ms:
+                reason = (
+                    f"last message was {(min_timestamp_ms - last_message_ms) // DAY_MS} days before the lookback window"
+                )
+            else:
+                reason = f"created {(created_ms - max_timestamp_ms) // (60 * 60 * 1000)}h after the minimum message age cutoff"
+            logger.debug(f"#{channel.name} has no eligible history: {reason}")
             return None
         return (start_ms, end_ms)
 

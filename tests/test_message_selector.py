@@ -1,5 +1,6 @@
 """Tests for message selector."""
 
+import logging
 import time
 from datetime import datetime, timedelta, timezone
 from typing import cast
@@ -279,6 +280,17 @@ class TestSelectRandomMessage:
             assert result[0].id == 7
 
         assert all(not channel.history_calls for channel in empty)
+
+    @pytest.mark.asyncio
+    async def test_logs_which_channels_were_skipped(self, mock_discord_message, caplog):
+        empty = MockChannel(name="rules", empty=True)
+        real = MockChannel(name="general", messages=make_messages(mock_discord_message, 10, interesting_ids={7}))
+
+        with caplog.at_level(logging.INFO, logger="bot.services.message_selector"):
+            await MessageSelector().select_random_message(as_guild(empty, real))
+
+        assert "Searching 1 of 2 readable channels" in caplog.text
+        assert "#rules" in caplog.text
 
     @pytest.mark.asyncio
     async def test_prefers_fresh_candidate_over_fallback_from_another_channel(self, mock_discord_message, monkeypatch):
